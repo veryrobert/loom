@@ -1,5 +1,6 @@
 :root{
-  --bg:#000; --glass:rgba(28,28,30,.58); --glass-strong:rgba(28,28,30,.72); --edge:rgba(255,255,255,.14); --ink:#fff; --soft:rgba(255,255,255,.62);
+  --bg:#000; --glass:rgba(28,28,30,.74); --glass-strong:rgba(28,28,30,.84);
+ --edge:rgba(255,255,255,.14); --ink:#fff; --soft:rgba(255,255,255,.62);
   box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px); color-scheme:dark;
 }
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){ --bg:#000; --ink:#fff; } }
@@ -48,24 +49,25 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 .slot-ctl > *{position:absolute; left:0; right:0; top:0; bottom:0; margin:auto}
 .dock.closed .slot,.dock.closed .title,.dock.closed .items{visibility:hidden}
 .dock > *{pointer-events:auto}
-.title{padding:0 12px; font-weight:400; font-size:16px; letter-spacing:-.005em; height:20px; line-height:20px; white-space:nowrap}
+.title:empty{visibility:hidden}
+.title{background:var(--glass); -webkit-backdrop-filter:blur(22px) saturate(1.5); backdrop-filter:blur(22px) saturate(1.5); border-radius:11px; padding:0 10px; font-weight:400; font-size:16px; letter-spacing:-.005em; height:22px; line-height:22px; white-space:nowrap}
 .items{display:flex; gap:12px; overflow-x:auto; width:100vw; padding:4px 0; scrollbar-width:none; scroll-snap-type:x mandatory; overscroll-behavior-x:contain}
 .items::before,.items::after{content:''; flex:0 0 calc(50vw - 39px)}
 .items::-webkit-scrollbar{display:none}
 .item{position:relative; flex:0 0 auto; width:54px; height:54px; border-radius:50%; display:grid; place-items:center; scroll-snap-align:center}
 .item .ring{position:absolute; inset:-1px; pointer-events:none}
-.item.sel{background:rgba(255,255,255,.94); color:#111; border-color:transparent}
+.item.sel{background:rgba(255,255,255,.94); color:#111; border-color:transparent; box-shadow:0 0 0 1px rgba(0,0,0,.1), 0 2px 10px rgba(0,0,0,.3)}
 .item.on:not(.sel){background:rgba(255,255,255,.28)}
 .item .num{position:absolute; font-weight:500; font-size:15px; font-variant-numeric:tabular-nums}
 .scrub{width:100vw; height:40px; overflow:hidden; touch-action:none; cursor:ew-resize}
 .scrub .strip{position:absolute; top:0; bottom:0; left:0; display:flex; align-items:center}
-.scrub .tick{width:1px; height:12px; background:rgba(255,255,255,.6); margin-right:7px; flex:0 0 auto}
+.scrub .tick{box-shadow:0 0 2px rgba(0,0,0,.55); width:1px; height:12px; background:rgba(255,255,255,.6); margin-right:7px; flex:0 0 auto}
 .scrub .tick.big{height:18px; background:#fff}
-.scrub .mid{position:absolute; left:50%; top:7px; bottom:7px; width:2px; margin-left:-1px; background:#FFD60A; border-radius:1px}
+.scrub .mid{box-shadow:0 0 3px rgba(0,0,0,.5); position:absolute; left:50%; top:7px; bottom:7px; width:2px; margin-left:-1px; background:#FFD60A; border-radius:1px}
 .chips{display:flex; gap:6px; overflow-x:auto; width:100vw; height:40px; align-items:center; padding:0 16px; scrollbar-width:none; justify-content:safe center}
 .chips::-webkit-scrollbar{display:none}
-.chip{flex:0 0 auto; height:34px; padding:0 10px; white-space:nowrap; color:rgba(255,255,255,.6); font-size:15px}
-.chip[aria-pressed="true"]{color:#fff; font-weight:500}
+.chip{background:var(--glass); -webkit-backdrop-filter:blur(22px) saturate(1.5); backdrop-filter:blur(22px) saturate(1.5); border-radius:17px; flex:0 0 auto; height:34px; padding:0 12px; white-space:nowrap; color:rgba(255,255,255,.78); font-size:15px}
+.chip[aria-pressed="true"]{background:rgba(255,255,255,.94); color:#111; font-weight:500; box-shadow:0 0 0 1px rgba(0,0,0,.1), 0 2px 10px rgba(0,0,0,.3)}
 .swatches{display:flex; gap:8px; padding:5px 10px; border-radius:22px; align-items:center}
 .sw{position:relative; width:28px; height:28px; border-radius:50%; border:1px solid rgba(255,255,255,.3); overflow:hidden; cursor:pointer; flex:0 0 auto; display:grid; place-items:center}
 .sw input{position:absolute; inset:0; width:100%; height:100%; opacity:0; border:0; padding:0; cursor:pointer}

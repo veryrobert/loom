@@ -13,14 +13,24 @@ const out = $('out');
 const src = document.createElement('canvas'), sctx = src.getContext('2d', { willReadFrequently: true });
 const tmp = document.createElement('canvas'), tctx = tmp.getContext('2d');
 const fin = document.createElement('canvas'), fctx = fin.getContext('2d');
-let img = null, imgId = 0, cache = null, interactive = false, seed = 7, picking = false, palette = [], paletteSrc = [], comparing = false;
+let img = null, imgId = 0, cache = null, interactive = false, seed = 7, picking = false, palette = [], paletteSrc = [], comparing = false, rawPreview = false;
+// paletteAuto: the palette is still the one extracted from the image (a new image may refresh it);
+// any hand-made or mode-set palette clears it so loading another image keeps the user's colours
+let paletteAuto = true;
 const v = {
   zoom: 1, panX: 0, panY: 0, format: 'image', split: 1, side: 'left', pcover: 0.5, psize: 4, pdepth: 2, mscale: 1, mx: 0, my: 0, maskMove: false, photoColour: true, exportLong: 'native',
   detail: 0, perstripe: true, cmode: 'palette', kcount: 7,
   bri: 1, con: 1.15, sat: 1.25, hue: 0, glow: 0, gsize: 10, blend: 'none', mix: 0.25,
   cols: 6, rows: 8, merge: 0.3, uneven: 0.35, pitch: 7, depth: 0, offset: true, noise: 0, accents: 0,
   dither: 'off', dlevels: 5, dsize: 2, dpal: false,
-  mode: 'weave', cell: 12, ssize: 0.8, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', snoise: 0, jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
+  // Dither mode's own settings — kept apart from the Dither tab above, which is a finish for the other modes
+  ddither: 'ordered', ddlevels: 2, ddsize: 2, ddpal: true,
+  // Glyph mode = Glyph mix's look, on its own keys
+  gcell: 9, gsize: 0.55, ghalf: 0.55, gjitter: 0.45, gset: 'classic', ginvert: false,
+  mode: 'shapes', cell: 12, ssize: 0.8, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', snoise: 0, jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
+  mdir: 'h', mpitch: 10, mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, minvert: false,
+  // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
+  slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9,
 };
 const D0 = { ...v };
 const HOT = ['#FF4628', '#FFD23C', '#7A3CFF', '#5ADCFF', '#FF7828', '#FF3C5A'];
@@ -44,15 +54,31 @@ function drawSource(W, H) {
   sctx.drawImage(img, (W - dw) / 2 + v.panX * L, (H - dh) / 2 + v.panY * L, dw, dh);
 }
 const BAYER = (() => { let b = [[0]]; for (let k = 0; k < 3; k++) { const n = b.length, nb = Array.from({ length: n * 2 }, () => new Array(n * 2)); for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const q = b[y][x] * 4; nb[y][x] = q; nb[y][x + n] = q + 2; nb[y + n][x] = q + 3; nb[y + n][x + n] = q + 1; } b = nb; } return b; })();
-function dither(O, W, H, u, pal) {
-  if (v.dither === 'off') return;
-  const Lv = v.dlevels, cs = Math.max(1, Math.round(v.dsize * u)), usePal = v.dpal && pal.length;
+// `o` picks which settings drive it: the Dither tab's finish by default, or Dither mode's own
+function dither(O, W, H, u, pal, o = { type: v.dither, levels: v.dlevels, size: v.dsize, usePal: v.dpal }) {
+  if (o.type === 'off') return;
+  const Lv = o.levels, cs = Math.max(1, Math.round(o.size * u)), usePal = o.usePal && pal.length;
   const w = Math.ceil(W / cs), h = Math.ceil(H / cs), B = new Float32Array(w * h * 3);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (Math.min(H - 1, y * cs + (cs >> 1)) * W + Math.min(W - 1, x * cs + (cs >> 1))) * 4, k = (y * w + x) * 3; B[k] = O[i]; B[k + 1] = O[i + 1]; B[k + 2] = O[i + 2]; }
   const step = 255 / (Lv - 1);
-  const quant = (r, g, b) => usePal ? nearest([r, g, b], pal) : [Math.round(r / step) * step, Math.round(g / step) * step, Math.round(b / step) * step];
-  if (v.dither === 'ordered') {
-    const amp = usePal ? 72 : step;
+  // With the palette on, Levels still counts: the palette (dark→light) becomes a ramp of Lv tones,
+  // its own colours kept as anchors and the extra levels blended evenly between neighbours
+  let ramp = pal;
+  if (usePal && Lv > pal.length && pal.length > 1) {
+    const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    const P = pal.slice().sort((a, b) => lum(a) - lum(b)), segs = P.length - 1, extra = Lv - P.length;
+    ramp = [P[0]];
+    for (let s = 0; s < segs; s++) {
+      const n = Math.floor(extra / segs) + (s < extra % segs ? 1 : 0), a = P[s], b = P[s + 1];
+      for (let j = 1; j <= n; j++) { const t = j / (n + 1); ramp.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]); }
+      ramp.push(b);
+    }
+  }
+  const quant = (r, g, b) => usePal ? nearest([r, g, b], ramp) : [Math.round(r / step) * step, Math.round(g / step) * step, Math.round(b / step) * step];
+  if (o.type === 'ordered') {
+    // Palette dither keeps the same blend-to-gap ratio at every level count (72/255 is the
+    // original two-colour look), so stepping Levels refines the bands rather than changing style
+    const amp = usePal ? 72 / Math.max(1, ramp.length - 1) : step;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const t = ((BAYER[y & 7][x & 7] + 0.5) / 64 - 0.5) * amp, k = (y * w + x) * 3, q = quant(B[k] + t, B[k + 1] + t, B[k + 2] + t); B[k] = q[0]; B[k + 1] = q[1]; B[k + 2] = q[2]; }
   } else {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -179,6 +205,77 @@ function region(W, H) {
 
 // ---------- shapes mode ----------
 const SHAPE_ORDER = ['dot', 'vbar', 'hline', 'square', 'diamond', 'cross'];
+const GLYPH_SET = ['triangle', 'arrow', 'ring', 'x', 'cross'];
+// Extra glyph outlines (unit coords, y down) for Glyph mode's larger sets — names the built-in
+// glyphOps shapes already cover (triangle, diamond, x, …) always use the built-in version
+const GLYPH_EXTRA = (() => {
+  const arc = (cx, cy, r, a0, a1, n = 32) => Array.from({ length: n + 1 }, (_, i) => { const a = a0 + (a1 - a0) * i / n; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; });
+  const ngon = (n, rot = -Math.PI / 2) => Array.from({ length: n }, (_, i) => { const a = rot + i * 2 * Math.PI / n; return [Math.cos(a), Math.sin(a)]; });
+  const star = (n, inner) => Array.from({ length: n * 2 }, (_, i) => { const a = -Math.PI / 2 + i * Math.PI / n, r = i % 2 ? inner : 1; return [r * Math.cos(a), r * Math.sin(a)]; });
+  const turn = (pts, q) => pts.map(([x, y]) => q === 1 ? [-y, x] : q === 2 ? [-x, -y] : q === 3 ? [y, -x] : [x, y]);
+  const cross = t => [[-t, -1], [t, -1], [t, -t], [1, -t], [1, t], [t, t], [t, 1], [-t, 1], [-t, t], [-1, t], [-1, -t], [-t, -t]];
+  const arrow = [[0, -1], [0.8, -0.15], [0.3, -0.15], [0.3, 1], [-0.3, 1], [-0.3, -0.15], [-0.8, -0.15]];
+  const rounded = (rr, n = 8) => [...arc(1 - rr, -1 + rr, rr, -Math.PI / 2, 0, n), ...arc(1 - rr, 1 - rr, rr, 0, Math.PI / 2, n), ...arc(-1 + rr, 1 - rr, rr, Math.PI / 2, Math.PI, n), ...arc(-1 + rr, -1 + rr, rr, Math.PI, Math.PI * 1.5, n)];
+  const T = Array.from({ length: 65 }, (_, i) => i / 64 * Math.PI * 2);
+  const ys = Array.from({ length: 33 }, (_, i) => -1 + i / 16);
+  return {
+    circle: null, // drawn as a true arc
+    square: [[-1, -1], [1, -1], [1, 1], [-1, 1]],
+    rounded: rounded(0.38),
+    tall: [[-0.55, -1], [0.55, -1], [0.55, 1], [-0.55, 1]],
+    triangle: [[0, -1], [1, 0.8], [-1, 0.8]],
+    triangleDown: [[-1, -0.8], [1, -0.8], [0, 1]],
+    corner: [[-1, -1], [1, 1], [-1, 1]],
+    diamond: [[0, -1], [1, 0], [0, 1], [-1, 0]],
+    pentagon: ngon(5), hexagon: ngon(6, 0), octagon: ngon(8, Math.PI / 8),
+    star4: star(4, 0.38), star5: star(5, 0.45), star6: star(6, 0.55), star8: star(8, 0.62),
+    plus: cross(0.3), slim: cross(0.14), x: cross(0.3).map(([x, y]) => [(x - y) * Math.SQRT1_2, (x + y) * Math.SQRT1_2]),
+    arrowUp: arrow, arrowRight: turn(arrow, 1), arrowDown: turn(arrow, 2), arrowLeft: turn(arrow, 3),
+    chevron: [[-1, 0.2], [0, -0.8], [1, 0.2], [1, 0.8], [0, -0.2], [-1, 0.8]],
+    dome: arc(0, 0, 1, Math.PI, Math.PI * 2),
+    quarter: [[-1, 1], ...arc(-1, 1, 2, -Math.PI / 2, 0)],
+    leaf: [...ys.map(y => [0.62 * (1 - y * y), y]), ...ys.slice().reverse().map(y => [-0.62 * (1 - y * y), y])],
+    drop: T.map(t => [0.8 * Math.sin(t) * Math.sin(t / 2), -Math.cos(t)]),
+    heart: T.map(t => [16 * Math.sin(t) ** 3, -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t))]),
+    crescent: [...arc(0, 0, 1, 1.009, 5.274), ...arc(0.45, 0, 0.85, -1.473, -4.810)],
+  };
+})();
+// Glyph mode's sets; 'classic' is the original Glyph mix set, so the default look never changes
+const GLYPH_SETS = {
+  classic: GLYPH_SET,
+  geometric: ['square', 'diamond', 'triangle', 'triangleDown', 'pentagon', 'hexagon', 'octagon', 'dot'],
+  stars: ['star4', 'star5', 'star6', 'star8'],
+  arrows: ['arrowUp', 'arrowRight', 'arrowDown', 'arrowLeft', 'chevron'],
+  curves: ['dot', 'ring', 'dome', 'quarter', 'leaf', 'drop', 'heart', 'crescent'],
+  // 'ch:' glyphs are typeset characters (Inter Bold) rather than drawn outlines
+  money: ['ch:$', 'ch:€', 'ch:£', 'ch:¥', 'ch:₿'],
+};
+GLYPH_SETS.everything = [...new Set(Object.values(GLYPH_SETS).flat())];
+// A thin rectangular bar centred at (cx,cy), `half` long each way, rotated by `angle` — used for the X glyph
+function diagBar(cx, cy, half, th, angle) {
+  const ca = Math.cos(angle), sa = Math.sin(angle), hx = ca * half, hy = sa * half, px = -sa * th / 2, py = ca * th / 2;
+  return ['p', [cx - hx + px, cy - hy + py, cx + hx + px, cy + hy + py, cx + hx - px, cy + hy - py, cx - hx - px, cy - hy - py]];
+}
+// Geometry for any centre+size shape (dot/square/diamond/triangle/arrow/x/ring/cross), stamped per cell by Shapes mode
+function glyphOps(shape, mx, my, d) {
+  if (shape === 'dot') return [['c', mx, my, d / 2]];
+  if (shape === 'square') return [['r', mx - d / 2, my - d / 2, d, d]];
+  if (shape === 'diamond') return [['p', [mx, my - d / 2, mx + d / 2, my, mx, my + d / 2, mx - d / 2, my]]];
+  if (shape === 'triangle') { const h = d / 2; return [['p', [mx, my - h, mx + h * 0.9, my + h * 0.8, mx - h * 0.9, my + h * 0.8]]]; }
+  if (shape === 'arrow') { const h = d / 2; return [['p', [mx, my - h, mx + h * 0.4, my - h * 0.25, mx + h * 0.18, my - h * 0.25, mx + h * 0.18, my + h, mx - h * 0.18, my + h, mx - h * 0.18, my - h * 0.25, mx - h * 0.4, my - h * 0.25]]]; }
+  if (shape === 'x') { const t = d * 0.22, rr = d / 2 * 0.95; return [diagBar(mx, my, rr, t, Math.PI / 4), diagBar(mx, my, rr, t, -Math.PI / 4)]; }
+  if (shape === 'ring') return [['o', mx, my, d / 2, Math.max(0.6, d / 2 - Math.max(1, d * 0.22))]];
+  if (shape === 'slash') { const t = Math.max(0.8, d * 0.08), rr = d / 2 * 0.95; return [diagBar(mx, my, rr, t, Math.PI / 4)]; }
+  const U = GLYPH_EXTRA[shape];
+  if (U) {
+    // Fit the outline so its longer side is d, centred on (mx,my)
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [x, y] of U) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    const k = d / Math.max(x1 - x0, y1 - y0), ox = (x0 + x1) / 2, oy = (y0 + y1) / 2;
+    return [['p', U.flatMap(([x, y]) => [mx + (x - ox) * k, my + (y - oy) * k])]];
+  }
+  const t = d * 0.2; return [['r', mx - d / 2, my - t / 2, d, t], ['r', mx - t / 2, my - d / 2, t, d]];
+}
 
 // Shape geometry shared by the canvas renderer and the SVG / PDF exporters.
 // ops: ['c', cx, cy, r] circle, ['r', x, y, w, h] rect, ['p', [x, y, ...]] polygon
@@ -192,7 +289,7 @@ function shapeGeometry(W, H, u, S) {
   if (custom) gi = nearestIdx(gc, pal);
   const Lg = gi >= 0 ? lum(pal[gi]) : 0;
   const r = mulberry(seed * 13 + 1), shift = Math.floor(r() * 6);
-  const set = v.sset === 'mixed' ? SHAPE_ORDER : [v.sset];
+  const set = v.sset === 'mixed' ? SHAPE_ORDER : v.sset === 'glyph' ? (v.mode === 'glyph' && GLYPH_SETS[v.gset]) || GLYPH_SET : [v.sset];
   const others = pal.map((c, j) => j).filter(j => j !== gi);
   const far = others.length ? others.reduce((a, b) => Math.abs(lum(pal[b]) - Lg) > Math.abs(lum(pal[a]) - Lg) ? b : a) : 0;
   const satOf = c => Math.max(...c) - Math.min(...c);
@@ -202,6 +299,33 @@ function shapeGeometry(W, H, u, S) {
   const J = v.jitter, BW = 4 + Math.floor(r() * 5), BH = 2 + Math.floor(r() * 3);
   const groups = new Map();
   const st = Math.max(1, Math.round(cs / 4));
+  const ground0 = gi >= 0 ? (custom ? v.groundColor : shown[gi]) : null;
+  if (v.sline) {
+    // Martens lines: one line per `cs` band, cut into segments `sseg` spacings long; each line's segment
+    // breaks are offset (golden-ratio stagger, re-rolled by Shuffle) so steps never line up across lines.
+    // Each segment takes one of `slevels` thicknesses from its tone, or drops out on light areas
+    const horiz = v.sline !== 'v', len = horiz ? W : H, across = horiz ? H : W, seg = Math.max(2, cs * v.sseg), L = [];
+    // dk: 0 at the paper colour → 1 at the ink colour. Lines start at sthresh and reach full thickness at sfull
+    const Lk = lum(pal[far]), span = Math.max(1, Math.abs(Lk - Lg)), lo = v.sthresh, hi = Math.max(lo + 0.01, v.sfull), phase = (seed % 997) * 0.1234;
+    for (let j = 0, n = Math.ceil(across / cs); j < n; j++) {
+      const q0 = Math.floor(j * cs), q1 = Math.min(across, Math.floor((j + 1) * cs)), qm = (q0 + q1) / 2;
+      const off = ((j * 0.6180339887 + phase) % 1) * seg * v.sstagger;
+      for (let p = -off; p < len; p += seg) {
+        const p0 = Math.max(0, Math.floor(p)), p1 = Math.min(len, Math.floor(p + seg)); if (p1 <= p0) continue;
+        let sr = 0, sg = 0, sb = 0, n2 = 0;
+        for (let q = q0; q < q1; q += st) for (let pp = p0; pp < p1; pp += st) { const i = ((horiz ? q : pp) * W + (horiz ? pp : q)) * 4; sr += S[i]; sg += S[i + 1]; sb += S[i + 2]; n2++; }
+        if (!n2) continue;
+        const avg = [sr / n2, sg / n2, sb / n2];
+        const dk = Math.min(1, Math.max(0, (Lg - lum(avg)) * Math.sign(Lg - Lk || 1) / span));
+        if (dk < lo) continue;
+        const fq = Math.min(1, (dk - lo) / (hi - lo));
+        const t = cs * 0.44 * v.ssize * Math.max(1, Math.ceil(fq * v.slevels)) / v.slevels;
+        L.push(horiz ? ['r', p0, qm - t / 2, p1 - p0, t] : ['r', qm - t / 2, p0, t, p1 - p0]);
+      }
+    }
+    groups.set(ink1, L);
+    return { ground: ground0, groups, ink: ink1 };
+  }
   for (let cy = 0; cy < ny; cy++) for (let cx = 0; cx < nx; cx++) {
     const x0 = Math.floor(cx * cs), y0 = Math.floor(cy * cs), x1 = Math.min(W, Math.floor((cx + 1) * cs)), y1 = Math.min(H, Math.floor((cy + 1) * cs));
     let sr = 0, sg = 0, sb = 0, n = 0;
@@ -213,7 +337,13 @@ function shapeGeometry(W, H, u, S) {
     let shape = v.sby === 'rows' ? set[(Math.floor(cy / v.bandRows) + shift) % set.length] : set[(idx + shift) % set.length];
     if (J > 0 && set.length > 1) { const bx = Math.floor(cx / BW), by = Math.floor(cy / BH), h1 = hash2(bx, by, seed), h2 = hash2(by, bx, seed + 99); if (h1 < J) shape = set[Math.floor(h2 * set.length)]; }
     const f = gi >= 0 ? Math.min(1, Math.abs(lum(avg) - Lg) / 160) : lum(avg) / 255;
-    const sz = v.ssize * (1 - v.halftone + v.halftone * f);
+    let sz = v.ssize * (1 - v.halftone + v.halftone * f);
+    if (v.slevels > 0) {
+      // Snap to slevels thickness steps. Tone is re-spread across the range a drawn cell can have
+      // (from halfway to the ink colour up to full ink), so every step gets used
+      const f0 = gi >= 0 ? Math.min(0.95, Math.abs(lum(pal[far]) - Lg) / 2 / 160) : 0, fq = Math.max(0, (f - f0) / (1 - f0));
+      sz = v.ssize * Math.max(1, Math.ceil(fq * v.slevels)) / v.slevels;
+    }
     if (sz <= 0.02) continue;
     let col;
     if (v.stone === 'mono') col = ink1;
@@ -221,33 +351,50 @@ function shapeGeometry(W, H, u, S) {
     else col = v.cmode === 'image' ? rgb2hex(avg.map(c => Math.round(c / 4) * 4)) : shown[idx];
     let L = groups.get(col); if (!L) { L = []; groups.set(col, L); }
     const mx = x0 + cs / 2, my = y0 + cs / 2, d = cs * sz;
-    if (shape === 'dot') L.push(['c', mx, my, d / 2]);
-    else if (shape === 'square') L.push(['r', mx - d / 2, my - d / 2, d, d]);
-    else if (shape === 'diamond') L.push(['p', [mx, my - d / 2, mx + d / 2, my, mx, my + d / 2, mx - d / 2, my]]);
-    else if (shape === 'hline') L.push(['r', x0 - 0.5, my - d * 0.22, (x1 - x0) + 1, d * 0.44]);
+    if (shape === 'hline') L.push(['r', x0 - 0.5, my - d * 0.22, (x1 - x0) + 1, d * 0.44]);
     else if (shape === 'vbar') L.push(['r', mx - d * 0.27, y0 - 0.5, d * 0.54, (y1 - y0) + 1]);
-    else { const t = d * 0.2; L.push(['r', mx - d / 2, my - t / 2, d, t]); L.push(['r', mx - t / 2, my - d / 2, t, d]); }
+    else if (shape.startsWith('ch:')) L.push(['t', mx, my, d, shape.slice(3)]);
+    else L.push(...glyphOps(shape, mx, my, d));
   }
   const ground = gi >= 0 ? (custom ? v.groundColor : shown[gi]) : null;
-  return { ground, groups };
+  return { ground, groups, ink: ink1 };
 }
+const RING_SEG = 20;
 function addOp(P, o) {
+  if (o[0] === 't') return; // text glyphs are drawn with fillText, not as paths
   if (o[0] === 'c') { P.moveTo(o[1] + o[3], o[2]); P.arc(o[1], o[2], o[3], 0, Math.PI * 2); }
   else if (o[0] === 'r') P.rect(o[1], o[2], o[3], o[4]);
+  else if (o[0] === 'o') {
+    // Annulus via two opposite-wound N-gons — the reversed inner loop punches the hole under nonzero fill
+    const [, cx, cy, rO, rI] = o;
+    P.moveTo(cx + rO, cy); for (let i = 1; i <= RING_SEG; i++) { const a = i / RING_SEG * Math.PI * 2; P.lineTo(cx + rO * Math.cos(a), cy + rO * Math.sin(a)); } P.closePath();
+    P.moveTo(cx + rI, cy); for (let i = 1; i <= RING_SEG; i++) { const a = -i / RING_SEG * Math.PI * 2; P.lineTo(cx + rI * Math.cos(a), cy + rI * Math.sin(a)); } P.closePath();
+  }
   else { const q = o[1]; P.moveTo(q[0], q[1]); for (let i = 2; i < q.length; i += 2) P.lineTo(q[i], q[i + 1]); P.closePath(); }
 }
 
+// The Dither tab as a finish over the treated layer — Weave dithers inside its own pipeline instead
+function ditherFinish(W, H, u) {
+  if (v.dither === 'off' || !W || !H) return;
+  const d = fctx.getImageData(0, 0, W, H); dither(d.data, W, H, u, palette.map(hex2rgb)); fctx.putImageData(d, 0, 0);
+}
 function renderShapes(W, H, g, u, live) {
   drawSource(W, H);
-  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.snoise, v.jitter, v.stone, seed, imgId]);
+  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.snoise, v.jitter, v.stone, v.mode, v.gset, v.ginvert, v.minvert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, seed, imgId]);
   let base;
   if (live && cache && cache.pkey === pkey) base = cache.P;
   else {
     const S = sctx.getImageData(0, 0, W, H).data;
     const G = shapeGeometry(W, H, u, S);
+    if (((v.mode === 'glyph' && v.ginvert) || (v.mode === 'martens' && v.minvert)) && G.ground) { const gr = G.ground, ink = G.ink; G.ground = ink; G.groups = new Map([...G.groups].map(([c, ops]) => [c === ink ? gr : c, ops])); }
     tmp.width = W; tmp.height = H;
     if (G.ground) { tctx.fillStyle = G.ground; tctx.fillRect(0, 0, W, H); } else tctx.drawImage(src, 0, 0);
-    for (const [col, ops] of G.groups) { const P = new Path2D(); for (const o of ops) addOp(P, o); tctx.fillStyle = col; tctx.fill(P); }
+    for (const [col, ops] of G.groups) {
+      const P = new Path2D(); for (const o of ops) addOp(P, o); tctx.fillStyle = col; tctx.fill(P);
+      // Typeset glyphs: font size picked so the symbol's height roughly matches a drawn glyph of size d
+      tctx.textAlign = 'center'; tctx.textBaseline = 'middle';
+      for (const o of ops) if (o[0] === 't') { tctx.font = `700 ${Math.max(4, o[3] * 1.3).toFixed(1)}px Inter, "Helvetica Neue", Arial, sans-serif`; tctx.fillText(o[4], o[1], o[2]); }
+    }
     const O = tctx.getImageData(0, 0, W, H).data;
     if (v.snoise > 0) { const nr = mulberry(seed * 31 + 5); for (let i = 0; i < O.length; i += 4) { const n = (nr() - 0.5) * 2 * v.snoise; O[i] += n; O[i + 1] += n; O[i + 2] += n; } }
     base = { O };
@@ -260,11 +407,53 @@ function renderShapes(W, H, g, u, live) {
   adjustPass(O);
   tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
   fin.width = W; fin.height = H; fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; fctx.drawImage(tmp, 0, 0);
+  ditherFinish(W, H, u);
   if (v.blend !== 'none' && v.mix > 0) { fctx.globalCompositeOperation = v.blend; fctx.globalAlpha = v.mix; fctx.drawImage(src, 0, 0); fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; }
   g.drawImage(adjustedSource(W, H), 0, 0);
   for (const [qx, qy, qw, qh] of regions(W, H)) { const w2 = Math.min(qw, W - qx), h2 = Math.min(qh, H - qy); if (w2 > 0 && h2 > 0) g.drawImage(fin, qx, qy, w2, h2, qx, qy, w2, h2); }
 }
 
+
+// ---------- dither mode: the whole image reduced straight to a 2(+)-colour dither ----------
+function renderDither(W, H, g, u, live) {
+  drawSource(W, H);
+  const pkey = JSON.stringify(['dither', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.ddsize, v.ddpal, seed, imgId]);
+  let O;
+  if (live && cache && cache.pkey === pkey) O = cache.O.slice();
+  else {
+    O = sctx.getImageData(0, 0, W, H).data.slice();
+    adjustPass(O);
+    dither(O, W, H, u, palette.map(hex2rgb), { type: v.ddither, levels: v.ddlevels, size: v.ddsize, usePal: v.ddpal });
+    if (live) cache = { pkey, O: O.slice() };
+  }
+  tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
+  fin.width = W; fin.height = H; fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; fctx.drawImage(tmp, 0, 0);
+  g.drawImage(adjustedSource(W, H), 0, 0);
+  for (const [qx, qy, qw, qh] of regions(W, H)) { const w2 = Math.min(qw, W - qx), h2 = Math.min(qh, H - qy); if (w2 > 0 && h2 > 0) g.drawImage(fin, qx, qy, w2, h2, qx, qy, w2, h2); }
+}
+
+// ---------- glyph mode: the Shapes engine set up as "Glyph mix" — a fine grid of solid glyphs
+// (triangle/arrow/ring/x/cross) sized by tone and clustered in patches, light areas left as paper
+// on a plain ground, mono ink. Glyph keeps its own settings so it never disturbs Shapes mode ----------
+if (document.fonts) document.fonts.load('700 32px Inter', '$€£¥₿').then(() => { cache = null; if (img) schedule(); }).catch(() => {});
+function renderGlyph(W, H, g, u, live) {
+  const o = { sset: 'glyph', sby: 'tone', stone: 'mono', ground: 'lightest', snoise: 0,
+    cell: v.gcell, ssize: v.gsize, halftone: v.ghalf, jitter: v.gjitter };
+  const keep = {}; for (const k in o) keep[k] = v[k];
+  Object.assign(v, o);
+  try { renderShapes(W, H, g, u, live); } finally { Object.assign(v, keep); }
+}
+
+// ---------- martens mode: Karel Martens' "Patterns" covers — lines at a fixed spacing, each stepping
+// between a few set thicknesses (thicker where darker), dropping out to white space in light areas.
+// Built on the Shapes engine's line/bar shapes with thickness snapped to mlevels steps ----------
+function renderMartens(W, H, g, u, live) {
+  const o = { sline: v.mdir, stone: 'mono', ground: 'lightest', snoise: 0,
+    cell: v.mpitch, ssize: v.msize, slevels: v.mlevels, sseg: v.mseg, sstagger: v.mstagger, sthresh: v.mthresh, sfull: v.mfull };
+  const keep = {}; for (const k in o) keep[k] = v[k];
+  Object.assign(v, o);
+  try { renderShapes(W, H, g, u, live); } finally { Object.assign(v, keep); }
+}
 
 // ---------- density zones: re-render at several densities, then tile ----------
 function zoneRects(W, H) {
@@ -307,6 +496,9 @@ function render(W, H, target) {
   const u = Math.max(W, H) / 850;
   const live = target === out;
   if (v.mode === 'shapes') return renderShapes(W, H, g, u, live);
+  if (v.mode === 'dither') return renderDither(W, H, g, u, live);
+  if (v.mode === 'glyph') return renderGlyph(W, H, g, u, live);
+  if (v.mode === 'martens') return renderMartens(W, H, g, u, live);
   const pkey = JSON.stringify([W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.cols, v.rows, v.merge, v.uneven, v.pitch, v.depth, v.offset, v.noise, v.dither, v.dlevels, v.dsize, v.dpal, seed, imgId]);
   let P;
   if (live && cache && cache.pkey === pkey) P = cache.P;
@@ -414,7 +606,7 @@ function extractPalette() {
   // averaging mutes colour, so lift each cluster's saturation back up
   const out = cent.map(c => { const L = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; return c.map(x => Math.max(0, Math.min(255, L + (x - L) * 1.3))); });
   out.sort((a, b) => (a[0] * .3 + a[1] * .59 + a[2] * .11) - (b[0] * .3 + b[1] * .59 + b[2] * .11));
-  palette = out.map(rgb2hex); paletteSrc = palette.slice();
+  palette = out.map(rgb2hex); paletteSrc = palette.slice(); paletteAuto = true;
 }
 
 
@@ -426,9 +618,15 @@ function layout() {
   let k = Math.min(window.devicePixelRatio || 1, 2) * (interactive ? 0.5 : 1) * (vid && !vid.paused ? 0.6 : 1);
   if (recording) k = recLong / Math.max(w, h);
   const W = Math.round(w * k), H = Math.round(h * k);
-  if (comparing && img) { out.width = W; out.height = H; drawSource(W, H); out.getContext('2d').drawImage(src, 0, 0); return; }
+  // A fresh image shows unprocessed until any setting changes — not only on opening a tab, since a
+  // tab is usually already open when switching images
+  if (rawPreview && rawKey() !== rawSnap) rawPreview = false;
+  if ((comparing || rawPreview) && img) { out.width = W; out.height = H; drawSource(W, H); out.getContext('2d').drawImage(src, 0, 0); return; }
   render(W, H, out);
 }
+let rawSnap = '';
+const rawKey = () => JSON.stringify([v, palette, seed]);
+const showRaw = () => { rawPreview = true; rawSnap = rawKey(); };
 let queued = false;
 const schedule = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; layout(); }); };
 addEventListener('resize', schedule);
@@ -506,11 +704,21 @@ const T_ = (key, label, icon) => ({ t: 't', key, label, icon });
 const C_ = (key, label, icon, opts) => ({ t: 'c', key, label, icon, opts });
 const A_ = (label, icon, fn) => ({ t: 'a', label, icon, fn });
 const FORMATS = [['image', 'Original'], ['screen', 'Full screen'], ['1', 'Square'], ['0.8', '4:5'], ['0.75', '3:4'], ['0.6667', '2:3'], ['0.5625', '9:16'], ['1.7778', '16:9'], ['1.3333', '4:3'], ['1.5', '3:2'], ['0.7071', 'A4'], ['1.4142', 'A4 wide']];
-const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['weave', 'Weave'], ['shapes', 'Shapes']]), { onPick: () => {
+// Switch to hide Martens from the Mode picker without removing it
+const MARTENS_ON = true;
+const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['shapes', 'Shapes'], ['weave', 'Weave'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : [])]), { onPick: () => {
   builtTab = null; selIdx.pattern = 0; selIdx.colour = 0;
-  if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; v.sat = 1.1; v.con = 1.05; if (img) extractPalette(); }
+  primeMode();
 } });
-let shapesPrimed = false;
+let shapesPrimed = false, ditherPrimed = false, glyphPrimed = false, glyphModePrimed = false, martensPrimed = false;
+// First-visit setup for a mode — run on picking it, and for the default mode at start and after a reset
+function primeMode() {
+  if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; v.sat = 1.1; v.con = 1.05; if (img) extractPalette(); }
+  if (v.mode === 'glyph' && !glyphModePrimed) { glyphModePrimed = true; palette = ['#ffffff', '#111111']; paletteSrc = palette.slice(); paletteAuto = false; }
+  if (v.mode === 'martens' && !martensPrimed) { martensPrimed = true; palette = ['#111111', '#f2f2f2']; paletteSrc = palette.slice(); paletteAuto = false; }
+  if (v.mode === 'dither' && !ditherPrimed) { ditherPrimed = true; palette = ['#000000', HOT[Math.floor(Math.random() * HOT.length)]]; paletteSrc = palette.slice(); paletteAuto = false; }
+}
+primeMode();
 // Controls can declare when they apply; hidden ones keep their values
 const when = (it, fn) => Object.assign(it, { when: fn });
 const densityOn = () => v.zmode !== 'off';
@@ -524,14 +732,34 @@ const WEAVE_ITEMS = [MODE_ITEM,
     A_('Shuffle', IC.shuffle, () => { seed = Math.floor(Math.random() * 1e6); }),
     S_('pitch', 'Stripe width', IC.width, 3, 48, 1), S_('depth', 'Stripe depth', IC.depth, 0, 1, 0.01), T_('offset', 'Offset stripes', IC.offset),
     S_('noise', 'Noise', IC.noise, 0, 80, 1), S_('accents', 'Tick rules', IC.ruler, 0, 12, 1), ...DENSITY_ITEMS];
-const SHAPE_ITEMS = [MODE_ITEM,
-    C_('sset', 'Shapes', IC.shapes, [['mixed', 'Mixed'], ['dot', 'Dots'], ['square', 'Squares'], ['diamond', 'Diamonds'], ['hline', 'Lines'], ['vbar', 'Bars'], ['cross', 'Crosses']]),
+const SSET_ITEM = Object.assign(C_('sset', 'Shapes', IC.shapes, [['mixed', 'Mixed'], ['glyph', 'Glyph mix'], ['dot', 'Dots'], ['square', 'Squares'], ['diamond', 'Diamonds'], ['hline', 'Lines'], ['vbar', 'Bars'], ['cross', 'Crosses'], ['triangle', 'Triangles'], ['arrow', 'Arrows'], ['ring', 'Rings'], ['x', 'Diagonal cross']]), { onPick: () => {
+  if (v.sset === 'glyph' && !glyphPrimed) {
+    glyphPrimed = true; v.cell = 9; v.ssize = 0.55; v.halftone = 0.55; v.jitter = 0.45; v.stone = 'mono'; v.ground = 'lightest';
+    palette = ['#ffffff', '#111111']; paletteSrc = palette.slice(); paletteAuto = false;
+  }
+} });
+const SHAPE_ITEMS = [MODE_ITEM, SSET_ITEM,
     S_('cell', 'Cell size', IC.cell, 3, 40, 1), S_('ssize', 'Shape size', IC.dot, 0.2, 1.3, 0.01), S_('halftone', 'Halftone', IC.halftone, 0, 1, 0.01),
     C_('sby', 'Shape by', IC.bands, [['tone', 'Tone'], ['rows', 'Rows']]), when(S_('bandRows', 'Band height', IC.rows, 1, 24, 1), () => v.sby === 'rows'),
     S_('jitter', 'Shape mix', IC.wind, 0, 1, 0.01),
     A_('Shuffle', IC.shuffle, () => { seed = Math.floor(Math.random() * 1e6); }),
     Object.assign(A_('Random settings', IC.dice, randomShapes), { flash: false }),
     S_('snoise', 'Noise', IC.noise, 0, 80, 1), ...DENSITY_ITEMS];
+const GLYPH_ITEMS = [MODE_ITEM,
+    S_('gcell', 'Grid size', IC.cell, 4, 40, 1), S_('gsize', 'Glyph size', IC.size, 0.1, 1.2, 0.01),
+    S_('ghalf', 'Tone to size', IC.halftone, 0, 1, 0.01), S_('gjitter', 'Mix', IC.dice, 0, 1, 0.01),
+    C_('gset', 'Glyphs', IC.shapes, [['classic', 'Classic'], ['geometric', 'Geometric'], ['stars', 'Stars'], ['arrows', 'Arrows'], ['curves', 'Curves'], ['money', 'Money'], ['everything', 'Everything']]),
+    A_('Shuffle', IC.shuffle, () => { seed = Math.floor(Math.random() * 1e6); })];
+const DITHER_ITEMS = [MODE_ITEM,
+    Object.assign(C_('ddither', 'Dither type', IC.grid, [['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
+    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddsize', 'Dot size', IC.size, 1, 12, 1), T_('ddpal', 'Use palette', IC.palette), ...DENSITY_ITEMS];
+const MARTENS_ITEMS = [MODE_ITEM,
+    C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical']]),
+    S_('mpitch', 'Line spacing', IC.width, 3, 48, 1), S_('mlevels', 'Thicknesses', IC.levels, 2, 6, 1),
+    S_('mthresh', 'Threshold', IC.contrast, 0, 0.95, 0.01), S_('mfull', 'Full at', IC.sun, 0.05, 1, 0.01),
+    S_('msize', 'Max thickness', IC.size, 0.4, 2.2, 0.01),
+    S_('mseg', 'Segment length', IC.bars, 1, 8, 0.1), S_('mstagger', 'Stagger', IC.offset, 0, 1, 0.01),
+    A_('Shuffle', IC.shuffle, () => { seed = Math.floor(Math.random() * 1e6); })];
 
 const PALETTES = [
   ['#0E5A3A', '#5E4BA6', '#8FCDBE', '#CDE9F0'], ['#0F8A6E', '#D9A21B', '#F3D9C4', '#FFFFFF'], ['#0B4F37', '#E0262B', '#7BA7BC', '#C8E39A'],
@@ -548,12 +776,12 @@ function randomPalette() {
   const P = PALETTES[k].slice().sort((a, b) => L(a) - L(b));
   const order = palette.map((h, i) => i).sort((a, b) => L(paletteSrc[a] || palette[a]) - L(paletteSrc[b] || palette[b]));
   const n = order.length, m = P.length;
-  order.forEach((idx, rank) => { palette[idx] = P[n > 1 ? Math.round(rank * (m - 1) / (n - 1)) : 0]; });
+  order.forEach((idx, rank) => { palette[idx] = P[n > 1 ? Math.round(rank * (m - 1) / (n - 1)) : 0]; }); paletteAuto = false;
   if (v.mode === 'weave') v.cmode = 'palette';
 }
 function randomShapes() {
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  v.sset = pick(['mixed', 'mixed', 'dot', 'square', 'diamond', 'hline', 'vbar', 'cross']);
+  v.sset = pick(['mixed', 'mixed', 'glyph', 'dot', 'square', 'diamond', 'hline', 'vbar', 'cross', 'triangle', 'arrow', 'ring', 'x']);
   v.cell = 6 + Math.floor(Math.random() * 18);
   v.ssize = +(0.5 + Math.random() * 0.6).toFixed(2);
   v.halftone = +(Math.random() * 0.8).toFixed(2);
@@ -581,6 +809,9 @@ const COLOUR_SHAPES = [
     C_('ground', 'Background', IC.ground, [['darkest', 'Darkest'], ['lightest', 'Lightest'], ['custom', 'Custom'], ['image', 'Image']]),
     when({ t: 'k', key: 'groundColor', label: 'Background colour', icon: IC.ground, onSet: () => { v.ground = 'custom'; } }, () => v.ground !== 'image'),
     ...COLOUR_COMMON];
+const COLOUR_GLYPH = [T_('ginvert', 'Invert', IC.contrast), ...COLOUR_COMMON];
+const COLOUR_MARTENS = [T_('minvert', 'Invert', IC.contrast), ...COLOUR_COMMON];
+const COLOUR_DITHER = [Object.assign(A_('Swap colours', IC.wind, () => { if (palette.length >= 2) { palette.reverse(); paletteSrc.reverse(); paletteAuto = false; } }), { flash: false }), ...COLOUR_COMMON];
 const SPLIT_CHOICE = Object.assign(C_('split', 'Treated area', IC.split, [[1, 'Full'], ['patch', 'Patches'], [0.5, 'Half'], [1 / 3, 'Third'], [0.25, 'Quarter'], [2 / 3, 'Two thirds']]), { onPick: () => { builtTab = null; } });
 const SIDE_ITEM = C_('side', 'Treat from', IC.side, [['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']]);
 const PATCH_ITEMS = [S_('pcover', 'Coverage', IC.cover, 0.05, 0.95, 0.01), S_('psize', 'Patch size', IC.patch, 1, 10, 1), S_('pdepth', 'Mix of sizes', IC.zones, 0, 4, 1),
@@ -598,13 +829,13 @@ const CROP_REST = [
 ];
 function CROP_ITEMS() { return [CROP_REST[0], ...SPLIT_ITEMS(), ...CROP_REST.slice(1)]; }
 const TABS = [
+  { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
   { id: 'adjust', label: 'Adjust', icon: IC.adjust, items: [
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
     S_('glow', 'Glow', IC.glow, 0, 2, 0.01), S_('gsize', 'Glow size', IC.radius, 2, 60, 1),
     C_('blend', 'Blend', IC.blend, [['none', 'Off'], ['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['hard-light', 'Hard light'], ['color', 'Colour'], ['luminosity', 'Luminosity'], ['difference', 'Difference']]),
     S_('mix', 'Blend amount', IC.mix, 0, 1, 0.01)] },
-  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'shapes' ? COLOUR_SHAPES : COLOUR_WEAVE; } },
-  { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'shapes' ? SHAPE_ITEMS : WEAVE_ITEMS; } },
+  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
   { id: 'dither', label: 'Dither', icon: IC.dither, items: [
     Object.assign(C_('dither', 'Dither type', IC.grid, [['off', 'Off'], ['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
     S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), T_('dpal', 'Use palette', IC.palette)] },
@@ -623,10 +854,11 @@ function ringSVG(n) {
 }
 function drawTabs() {
   const nav = $('tabs'); nav.innerHTML = '';
-  if (v.mode === 'shapes' && tabId === 'dither') tabId = null;
-  TABS.filter(t => !(v.mode === 'shapes' && t.id === 'dither')).forEach(t => {
+  const hideDitherTab = v.mode === 'dither';
+  if (hideDitherTab && tabId === 'dither') tabId = null;
+  TABS.filter(t => !(hideDitherTab && t.id === 'dither')).forEach(t => {
     const b = document.createElement('button'); b.className = 'tab'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', t.id === tabId);
-    b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => { tabId = tabId === t.id ? null : t.id; builtTab = null; drawAll(); }; nav.append(b);
+    b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => { tabId = tabId === t.id ? null : t.id; if (tabId) { rawPreview = false; cache = null; } builtTab = null; drawAll(); schedule(); }; nav.append(b);
   });
 }
 let builtTab = null, scrollLock = false, lockT;
@@ -716,11 +948,11 @@ function drawSwatches() {
     const w = document.createElement('label'); w.className = 'sw'; w.style.background = h;
     if (removing) {
       w.classList.add('rm'); w.setAttribute('role', 'button'); w.setAttribute('aria-label', 'Remove colour ' + h);
-      w.onclick = () => { if (palette.length > 1) { palette.splice(i, 1); paletteSrc.splice(i, 1); drawSwatches(); schedule(); } };
+      w.onclick = () => { if (palette.length > 1) { palette.splice(i, 1); paletteSrc.splice(i, 1); paletteAuto = false; drawSwatches(); schedule(); } };
     } else {
       w.setAttribute('aria-label', 'Change colour ' + h);
       const inp = document.createElement('input'); inp.type = 'color'; inp.value = h;
-      inp.addEventListener('input', () => { palette[i] = inp.value; w.style.background = inp.value; usePalette(); schedule(); });
+      inp.addEventListener('input', () => { palette[i] = inp.value; paletteAuto = false; w.style.background = inp.value; usePalette(); schedule(); });
       w.append(inp);
     }
     box.append(w);
@@ -728,7 +960,7 @@ function drawSwatches() {
   const add = document.createElement('label'); add.className = 'sw tool'; add.setAttribute('aria-label', 'Add colour'); add.innerHTML = '<span>+</span>';
   const ai = document.createElement('input'); ai.type = 'color'; ai.value = '#ffffff';
   let added = -1;
-  ai.addEventListener('input', () => { if (added < 0) { palette.push(ai.value); paletteSrc.push(ai.value); added = palette.length - 1; } else { palette[added] = ai.value; paletteSrc[added] = ai.value; } usePalette(); schedule(); });
+  ai.addEventListener('input', () => { paletteAuto = false; if (added < 0) { palette.push(ai.value); paletteSrc.push(ai.value); added = palette.length - 1; } else { palette[added] = ai.value; paletteSrc[added] = ai.value; } usePalette(); schedule(); });
   ai.addEventListener('change', () => { added = -1; drawSwatches(); });
   add.append(ai); box.append(add);
   const rm = document.createElement('button'); rm.className = 'sw tool' + (removing ? ' active' : ''); rm.setAttribute('aria-label', removing ? 'Done removing' : 'Remove colours'); rm.innerHTML = '<span>' + (removing ? '✓' : '−') + '</span>';
@@ -806,7 +1038,7 @@ function loadFile(f, opts) {
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
   const im = new Image();
-  im.onload = () => { img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; extractPalette(); $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
+  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
   im.src = URL.createObjectURL(f);
   if (!opts.skipStore) storeFile(f).then(refreshLibraryIfOpen).catch(() => {});
 }
@@ -836,7 +1068,7 @@ out.addEventListener('pointerup', e => {
     if (picking) {
       const r = out.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * src.width, y = (e.clientY - r.top) / r.height * src.height;
       const d = sctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
-      palette.push(rgb2hex([d[0], d[1], d[2]])); paletteSrc.push(palette[palette.length - 1]); v.cmode = 'palette'; picking = false; toast(''); drawAll(); schedule();
+      palette.push(rgb2hex([d[0], d[1], d[2]])); paletteSrc.push(palette[palette.length - 1]); paletteAuto = false; v.cmode = 'palette'; picking = false; toast(''); drawAll(); schedule();
     } else if (document.body.classList.contains('hideui')) showUI(); else { document.body.classList.add('hideui'); clearTimeout(idleT); }
   }
   pts.delete(e.pointerId); if (pts.size < 2) pinch0 = null; if (!pts.size && interactive) { interactive = false; schedule(); }
@@ -859,8 +1091,8 @@ function loadVideo(f, opts) {
   let started = false;
   const ready = () => {
     if (started || !el.videoWidth || el.readyState < 2) return;
-    started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
-    extractPalette(); $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
+    const first = !img; started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
+    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
     toast(''); drawAll(); schedule(); showUI(); paintVbar(); frameLoop();
   };
   ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'timeupdate'].forEach(ev => el.addEventListener(ev, ready));
@@ -892,7 +1124,7 @@ let resetArm = 0;
 $('vreset').onclick = () => {
   if (Date.now() - resetArm > 2500) { resetArm = Date.now(); flash('Tap again to reset all settings'); return; }
   resetArm = 0;
-  Object.assign(v, D0); seed = 7; shapesPrimed = false; picking = false;
+  Object.assign(v, D0); seed = 7; shapesPrimed = false; ditherPrimed = false; glyphPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
   Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null;
   if (img) extractPalette();
   drawAll(); schedule(); flash('Settings reset');
@@ -1020,6 +1252,12 @@ function vectorFile(fmt, W, H) {
         for (const o of ops) {
           if (o[0] === 'c') { const r = n2(o[3]); d += `M${n2(o[1] - o[3])} ${n2(o[2])}a${r} ${r} 0 1 0 ${n2(2 * o[3])} 0a${r} ${r} 0 1 0 ${n2(-2 * o[3])} 0z`; }
           else if (o[0] === 'r') d += `M${n2(o[1])} ${n2(o[2])}h${n2(o[3])}v${n2(o[4])}h${n2(-o[3])}z`;
+          else if (o[0] === 'o') {
+            const [, cx, cy, rO, rI] = o, pt = (r, i, sign) => `${n2(cx + r * Math.cos(sign * i / RING_SEG * Math.PI * 2))} ${n2(cy + r * Math.sin(sign * i / RING_SEG * Math.PI * 2))}`;
+            let seg = `M${pt(rO, 0, 1)}`; for (let i = 1; i <= RING_SEG; i++) seg += `L${pt(rO, i, 1)}`; seg += 'z';
+            seg += `M${pt(rI, 0, -1)}`; for (let i = 1; i <= RING_SEG; i++) seg += `L${pt(rI, i, -1)}`; seg += 'z';
+            d += seg;
+          }
           else { const q = o[1]; d += `M${n2(q[0])} ${n2(q[1])}` + q.slice(2).reduce((acc, val, i) => acc + (i % 2 ? ` ${n2(val)}` : `L${n2(val)}`), '') + 'z'; }
         }
         parts.push(`<path fill="${adjHex(col)}" d="${d}"/>`);
@@ -1044,6 +1282,11 @@ function vectorFile(fmt, W, H) {
         else if (o[0] === 'c') {
           const [, x, y, r] = o, k = r * K;
           b.push(`${n2(x + r)} ${n2(y)} m ${n2(x + r)} ${n2(y + k)} ${n2(x + k)} ${n2(y + r)} ${n2(x)} ${n2(y + r)} c ${n2(x - k)} ${n2(y + r)} ${n2(x - r)} ${n2(y + k)} ${n2(x - r)} ${n2(y)} c ${n2(x - r)} ${n2(y - k)} ${n2(x - k)} ${n2(y - r)} ${n2(x)} ${n2(y - r)} c ${n2(x + k)} ${n2(y - r)} ${n2(x + r)} ${n2(y - k)} ${n2(x + r)} ${n2(y)} c h`);
+        } else if (o[0] === 'o') {
+          const [, cx, cy, rO, rI] = o, pt = (r, i, sign) => `${n2(cx + r * Math.cos(sign * i / RING_SEG * Math.PI * 2))} ${n2(cy + r * Math.sin(sign * i / RING_SEG * Math.PI * 2))}`;
+          let t = `${pt(rO, 0, 1)} m`; for (let i = 1; i <= RING_SEG; i++) t += ` ${pt(rO, i, 1)} l`; t += ' h';
+          t += ` ${pt(rI, 0, -1)} m`; for (let i = 1; i <= RING_SEG; i++) t += ` ${pt(rI, i, -1)} l`; t += ' h';
+          b.push(t);
         } else { const q = o[1]; let t = `${n2(q[0])} ${n2(q[1])} m`; for (let i = 2; i < q.length; i += 2) t += ` ${n2(q[i])} ${n2(q[i + 1])} l`; b.push(t + ' h'); }
       }
       b.push('f'); cmd.push(b.join('\n'));
@@ -1094,7 +1337,7 @@ async function renderLibList() {
     box.innerHTML = '';
     if (!items.length) { box.innerHTML = '<p class="lib-empty">No saved presets yet</p>'; return; }
     items.forEach(p => box.append(libRow(
-      p.mode === 'shapes' ? '◆' : '≋',
+      p.mode === 'shapes' ? '◆' : p.mode === 'glyph' ? '✦' : p.mode === 'dither' ? '▦' : p.mode === 'martens' ? '▨' : '≋',
       p.name,
       new Date(p.createdAt).toLocaleDateString() + ' · ' + p.mode,
       () => applyPreset(p),
@@ -1132,6 +1375,7 @@ async function renderLibList() {
 function applyPreset(p) {
   const { __seed, ...rest } = p.state;
   Object.assign(v, rest);
+  if (v.mode === 'martens' && !MARTENS_ON) v.mode = 'weave';
   if (typeof __seed === 'number') seed = __seed;
   cache = null; builtTab = null;
   if (img) extractPalette();
