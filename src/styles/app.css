@@ -15,7 +15,7 @@ svg{display:block}
 #out{position:fixed; display:block; touch-action:none}
 .empty{position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--soft)}
 .empty[hidden]{display:none}
-.empty button{width:64px; height:64px; border-radius:50%; display:grid; place-items:center; color:#fff}
+.empty > button.glass{width:64px; height:64px; border-radius:50%; display:grid; place-items:center; color:#fff}
 .ui{transition:opacity .45s ease}
 body.hideui .ui{opacity:0; pointer-events:none}
 .cbtn{position:relative; width:40px; height:40px; display:grid; place-items:center; border-radius:50%; cursor:pointer}
@@ -98,4 +98,13 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 .lib-name{font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .lib-sub{font-size:12px; color:rgba(255,255,255,.5)}
 .lib-del{width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,.1); display:grid; place-items:center; flex:0 0 auto; font-size:16px; color:rgba(255,255,255,.7)}
+.recent{display:flex; gap:8px; margin-top:18px; max-width:calc(100vw - 32px); overflow-x:auto; scrollbar-width:none; padding:2px}
+.recent::-webkit-scrollbar{display:none}
+.recent-item{position:relative; width:64px; height:64px; flex:0 0 auto; border-radius:14px; overflow:hidden; background:rgba(255,255,255,.08)}
+.recent-item img,.recent-item video,.lib-cell img,.lib-cell video{width:100%; height:100%; object-fit:cover; display:block; pointer-events:none}
+.recent-play{position:absolute; right:5px; bottom:4px; font-size:11px; color:#fff; text-shadow:0 0 3px #000}
+.recent-all{height:34px; padding:0 14px; border-radius:17px; background:rgba(255,255,255,.1); color:#fff; font-size:13px}
+.lib-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(84px, 1fr)); gap:6px}
+.lib-cell{position:relative; aspect-ratio:1; border-radius:12px; overflow:hidden; background:rgba(255,255,255,.08); cursor:pointer}
+.lib-cell-del{position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; font-size:14px; line-height:1; display:grid; place-items:center}
 .lib-empty{color:rgba(255,255,255,.45); font-size:13px; text-align:center; padding:24px 0}

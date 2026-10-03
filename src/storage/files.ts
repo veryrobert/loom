@@ -1,10 +1,13 @@
 import { db, type StoredFile } from './db';
 
-// Keep the recent-files list from growing without bound — old source files
-// are the least likely to matter, so trim from the oldest end.
-const MAX_FILES = 16;
+// Keep the photo gallery from growing without bound — old source files are
+// the least likely to matter, so trim from the oldest end.
+const MAX_FILES = 60;
 
 export async function storeFile(file: File): Promise<number> {
+  // Re-uploading the same file moves it to the front rather than storing a duplicate
+  const dupes = await db.files.where('name').equals(file.name).filter((f) => f.size === file.size).primaryKeys();
+  if (dupes.length) await db.files.bulkDelete(dupes);
   const id = await db.files.add({
     name: file.name,
     type: file.type,
@@ -19,7 +22,12 @@ export async function storeFile(file: File): Promise<number> {
 }
 
 export async function listFiles(): Promise<StoredFile[]> {
-  return db.files.orderBy('createdAt').reverse().toArray();
+  const all = await db.files.orderBy('createdAt').reverse().toArray();
+  // Tidy copies stored before duplicates were prevented: keep the newest of each name + size
+  const seen = new Set<string>(), keep: StoredFile[] = [], drop: number[] = [];
+  for (const f of all) { const k = f.name + '|' + f.size; if (seen.has(k)) drop.push(f.id!); else { seen.add(k); keep.push(f); } }
+  if (drop.length) await db.files.bulkDelete(drop);
+  return keep;
 }
 
 export async function getFile(id: number): Promise<StoredFile | undefined> {

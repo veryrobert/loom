@@ -28,9 +28,9 @@ const v = {
   // Glyph mode = Glyph mix's look, on its own keys
   gcell: 9, gsize: 0.55, ghalf: 0.55, gjitter: 0.45, gset: 'classic', ginvert: false,
   mode: 'shapes', cell: 12, ssize: 0.8, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', snoise: 0, jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
-  mdir: 'h', mpitch: 10, mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, minvert: false,
+  mdir: 'h', mpitch: 10, mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30, minvert: false,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
-  slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9,
+  slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
 };
 const D0 = { ...v };
 const HOT = ['#FF4628', '#FFD23C', '#7A3CFF', '#5ADCFF', '#FF7828', '#FF3C5A'];
@@ -305,8 +305,32 @@ function shapeGeometry(W, H, u, S) {
     // breaks are offset (golden-ratio stagger, re-rolled by Shuffle) so steps never line up across lines.
     // Each segment takes one of `slevels` thicknesses from its tone, or drops out on light areas
     const horiz = v.sline !== 'v', len = horiz ? W : H, across = horiz ? H : W, seg = Math.max(2, cs * v.sseg), L = [];
+    const tone = avg => Math.min(1, Math.max(0, (Lg - lum(avg)) * Math.sign(Lg - Lk || 1) / span));
     // dk: 0 at the paper colour → 1 at the ink colour. Lines start at sthresh and reach full thickness at sfull
     const Lk = lum(pal[far]), span = Math.max(1, Math.abs(Lk - Lg)), lo = v.sthresh, hi = Math.max(lo + 0.01, v.sfull), phase = (seed % 997) * 0.1234;
+    if (v.sline === 'd') {
+      // Diagonal: the same lines in a rotated frame (u along the line, w across it), drawn as polygons
+      const th = -v.sangle * Math.PI / 180, ca = Math.cos(th), sa = Math.sin(th);
+      const us = [0, W * ca, H * sa, W * ca + H * sa], ws = [0, -W * sa, H * ca, -W * sa + H * ca];
+      const u0 = Math.min(...us), u1 = Math.max(...us), w0 = Math.min(...ws), w1 = Math.max(...ws);
+      const at = (uu, ww) => [uu * ca - ww * sa, uu * sa + ww * ca];
+      for (let j = 0, n = Math.ceil((w1 - w0) / cs); j < n; j++) {
+        const q0 = w0 + j * cs, q1 = q0 + cs, qm = q0 + cs / 2, off = ((j * 0.6180339887 + phase) % 1) * seg * v.sstagger;
+        for (let p = u0 - off; p < u1; p += seg) {
+          let sr = 0, sg = 0, sb = 0, n2 = 0;
+          for (let q = q0; q < q1; q += st) for (let pp = p; pp < p + seg; pp += st) {
+            const [x, y] = at(pp, q); if (x < 0 || y < 0 || x >= W || y >= H) continue;
+            const i = ((y | 0) * W + (x | 0)) * 4; sr += S[i]; sg += S[i + 1]; sb += S[i + 2]; n2++;
+          }
+          if (!n2) continue;
+          const dk = tone([sr / n2, sg / n2, sb / n2]); if (dk < lo) continue;
+          const t = cs * 0.44 * v.ssize * Math.max(1, Math.ceil(Math.min(1, (dk - lo) / (hi - lo)) * v.slevels)) / v.slevels;
+          L.push(['p', [...at(p, qm - t / 2), ...at(p + seg, qm - t / 2), ...at(p + seg, qm + t / 2), ...at(p, qm + t / 2)]]);
+        }
+      }
+      groups.set(ink1, L);
+      return { ground: ground0, groups, ink: ink1 };
+    }
     for (let j = 0, n = Math.ceil(across / cs); j < n; j++) {
       const q0 = Math.floor(j * cs), q1 = Math.min(across, Math.floor((j + 1) * cs)), qm = (q0 + q1) / 2;
       const off = ((j * 0.6180339887 + phase) % 1) * seg * v.sstagger;
@@ -316,7 +340,7 @@ function shapeGeometry(W, H, u, S) {
         for (let q = q0; q < q1; q += st) for (let pp = p0; pp < p1; pp += st) { const i = ((horiz ? q : pp) * W + (horiz ? pp : q)) * 4; sr += S[i]; sg += S[i + 1]; sb += S[i + 2]; n2++; }
         if (!n2) continue;
         const avg = [sr / n2, sg / n2, sb / n2];
-        const dk = Math.min(1, Math.max(0, (Lg - lum(avg)) * Math.sign(Lg - Lk || 1) / span));
+        const dk = tone(avg);
         if (dk < lo) continue;
         const fq = Math.min(1, (dk - lo) / (hi - lo));
         const t = cs * 0.44 * v.ssize * Math.max(1, Math.ceil(fq * v.slevels)) / v.slevels;
@@ -380,7 +404,7 @@ function ditherFinish(W, H, u) {
 }
 function renderShapes(W, H, g, u, live) {
   drawSource(W, H);
-  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.snoise, v.jitter, v.stone, v.mode, v.gset, v.ginvert, v.minvert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, seed, imgId]);
+  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.snoise, v.jitter, v.stone, v.mode, v.gset, v.ginvert, v.minvert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
   let base;
   if (live && cache && cache.pkey === pkey) base = cache.P;
   else {
@@ -449,7 +473,7 @@ function renderGlyph(W, H, g, u, live) {
 // Built on the Shapes engine's line/bar shapes with thickness snapped to mlevels steps ----------
 function renderMartens(W, H, g, u, live) {
   const o = { sline: v.mdir, stone: 'mono', ground: 'lightest', snoise: 0,
-    cell: v.mpitch, ssize: v.msize, slevels: v.mlevels, sseg: v.mseg, sstagger: v.mstagger, sthresh: v.mthresh, sfull: v.mfull };
+    cell: v.mpitch, ssize: v.msize, slevels: v.mlevels, sseg: v.mseg, sstagger: v.mstagger, sthresh: v.mthresh, sfull: v.mfull, sangle: v.mangle };
   const keep = {}; for (const k in o) keep[k] = v[k];
   Object.assign(v, o);
   try { renderShapes(W, H, g, u, live); } finally { Object.assign(v, keep); }
@@ -754,7 +778,8 @@ const DITHER_ITEMS = [MODE_ITEM,
     Object.assign(C_('ddither', 'Dither type', IC.grid, [['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
     S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddsize', 'Dot size', IC.size, 1, 12, 1), T_('ddpal', 'Use palette', IC.palette), ...DENSITY_ITEMS];
 const MARTENS_ITEMS = [MODE_ITEM,
-    C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical']]),
+    C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical'], ['d', 'Diagonal']]),
+    when(S_('mangle', 'Angle', IC.ruler, 5, 85, 1), () => v.mdir === 'd'),
     S_('mpitch', 'Line spacing', IC.width, 3, 48, 1), S_('mlevels', 'Thicknesses', IC.levels, 2, 6, 1),
     S_('mthresh', 'Threshold', IC.contrast, 0, 0.95, 0.01), S_('mfull', 'Full at', IC.sun, 0.05, 1, 0.01),
     S_('msize', 'Max thickness', IC.size, 0.4, 2.2, 0.01),
@@ -1315,7 +1340,7 @@ function refreshLibraryIfOpen() { if (!$('library').classList.contains('hidden')
 $('vlib').onclick = openLibrary;
 $('libClose').onclick = closeLibrary;
 function drawLibrary() {
-  segment($('libSeg'), [['presets', 'Presets'], ['files', 'Files'], ['downloads', 'Downloads']], lib.tab, t => { lib.tab = t; drawLibrary(); });
+  segment($('libSeg'), [['presets', 'Presets'], ['files', 'Photos'], ['downloads', 'Downloads']], lib.tab, t => { lib.tab = t; drawLibrary(); });
   $('libSaveGroup').classList.toggle('hidden', lib.tab !== 'presets');
   renderLibList();
 }
@@ -1345,17 +1370,19 @@ async function renderLibList() {
     )));
   } else if (lib.tab === 'files') {
     const items = await listFiles();
-    box.innerHTML = '';
-    if (!items.length) { box.innerHTML = '<p class="lib-empty">No stored files yet</p>'; return; }
+    clearThumbs(box);
+    if (!items.length) { box.innerHTML = '<p class="lib-empty">No photos or videos yet</p>'; return; }
+    // Gallery: a thumbnail grid, newest first; tap to open, × to remove
+    const grid = document.createElement('div'); grid.className = 'lib-grid';
     items.forEach(f => {
-      const thumbHtml = f.type.startsWith('image/') ? `<img src="${URL.createObjectURL(f.blob)}">` : '▶';
-      box.append(libRow(
-        thumbHtml, f.name,
-        new Date(f.createdAt).toLocaleDateString() + ' · ' + formatBytes(f.size),
-        () => reopenFile(f),
-        () => deleteFile(f.id),
-      ));
+      const cell = document.createElement('div'); cell.className = 'lib-cell'; cell.title = f.name + ' · ' + new Date(f.createdAt).toLocaleDateString();
+      cell.append(thumbEl(f, box)); if (f.type.startsWith('video/')) cell.insertAdjacentHTML('beforeend', '<span class="recent-play">▶</span>');
+      cell.onclick = () => reopenFile(f);
+      const del = document.createElement('button'); del.className = 'lib-cell-del'; del.setAttribute('aria-label', 'Delete ' + f.name); del.textContent = '×';
+      del.onclick = async e => { e.stopPropagation(); await deleteFile(f.id); renderLibList(); drawRecent(); };
+      cell.append(del); grid.append(cell);
     });
+    box.append(grid);
   } else {
     const items = await listDownloads();
     box.innerHTML = '';
@@ -1381,6 +1408,27 @@ function applyPreset(p) {
   if (img) extractPalette();
   closeLibrary(); drawAll(); schedule(); flash('Preset "' + p.name + '" loaded');
 }
+// Thumbnail for a stored image/video. URLs are tracked per container and revoked when it is redrawn
+const thumbUrls = new WeakMap();
+function thumbEl(f, box) {
+  const url = URL.createObjectURL(f.blob); (thumbUrls.get(box) || thumbUrls.set(box, []).get(box)).push(url);
+  if (f.type.startsWith('video/')) { const el = document.createElement('video'); el.muted = true; el.playsInline = true; el.preload = 'metadata'; el.src = url + '#t=0.1'; return el; }
+  const el = document.createElement('img'); el.alt = ''; el.loading = 'lazy'; el.src = url; return el;
+}
+function clearThumbs(box) { (thumbUrls.get(box) || []).forEach(u => URL.revokeObjectURL(u)); thumbUrls.set(box, []); box.innerHTML = ''; }
+// Loading screen: the last few photos/videos as one-tap thumbnails, plus a way into the full gallery
+async function drawRecent() {
+  const box = $('recent'); clearThumbs(box);
+  const items = (await listFiles().catch(() => [])).slice(0, 5);
+  box.hidden = $('recentAll').hidden = !items.length;
+  items.forEach(f => {
+    const b = document.createElement('button'); b.className = 'recent-item'; b.setAttribute('aria-label', 'Open ' + f.name);
+    b.append(thumbEl(f, box)); if (f.type.startsWith('video/')) b.insertAdjacentHTML('beforeend', '<span class="recent-play">▶</span>');
+    b.onclick = () => reopenFile(f); box.append(b);
+  });
+}
+$('recentAll').onclick = () => { lib.tab = 'files'; openLibrary(); };
+drawRecent();
 function reopenFile(f) {
   const file = new File([f.blob], f.name, { type: f.type });
   closeLibrary();
