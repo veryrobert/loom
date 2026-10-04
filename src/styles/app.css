@@ -212,7 +212,7 @@ body.menuopen .vbar{animation:menuIn .22s var(--ease); transform-origin:100% 0}
 .weave path{stroke-dasharray:1; stroke-dashoffset:1; animation:weave 1.8s cubic-bezier(.6,0,.3,1) infinite}
 .weave path:nth-child(2){animation-delay:.18s} .weave path:nth-child(3){animation-delay:.36s} .weave path:nth-child(4){animation-delay:.54s}
 @keyframes weave{0%{stroke-dashoffset:1; opacity:.35} 40%,60%{stroke-dashoffset:0; opacity:1} 100%{stroke-dashoffset:-1; opacity:.35}}
-.boot{position:fixed; inset:0; z-index:50; display:grid; place-items:center; background:var(--bg); pointer-events:none}
+.boot{position:fixed; inset:0; z-index:50; display:grid; place-items:center; background:#000; pointer-events:none}
 .boot .weave{width:36px; height:36px}
 .loader{position:fixed; left:50%; top:50%; z-index:8; width:64px; height:64px; margin:-32px 0 0 -32px; border-radius:50%; display:grid; place-items:center;
   background:var(--glass-strong); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); pointer-events:none}
