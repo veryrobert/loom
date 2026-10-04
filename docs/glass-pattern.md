@@ -82,3 +82,64 @@ vector export (Glass is a photographic effect, so PNG only).
   high Frost on a colourful photo like the streaked abstracts.
 - Scale and Density change rib width; Invert, Grain and Dither finish layer correctly.
 - Performance: a full-screen redraw while dragging a slider should stay smooth on a phone.
+
+## Code references (read 2026-10-04)
+
+### Paper Shaders: Fluted Glass (open source, Apache 2.0)
+
+[`packages/shaders/src/shaders/fluted-glass.ts`](https://github.com/paper-design/shaders/blob/main/packages/shaders/src/shaders/fluted-glass.ts)
+is a single WebGL2 fragment shader and the most complete public implementation:
+
+- **Rib space:** `uv = (uv - .5) * patternSize`, rotated by `angle`. `fract(uv.x)` is the position
+  across a rib and `floor(uv.x)` the rib index. Distortion is added to the fract part, then the UV is
+  rotated back and sampled. The shift is measured in *rib widths* and goes up to ~3, so each rib can
+  show the image from several ribs away. That is much stronger slicing than Loom's current ≤0.75.
+- **Distortion shapes** (x = position across the rib):
+  - *prism* `-(1.5x)³ + .5`
+  - *lens* `2x² − .5`
+  - *contour* `(2(x−.5))⁶ − .25`
+  - *cascade* `.5·sin((x+.25)·2π)`
+  - *flat* `.33·(.33 − |x|^.2·x)`
+
+  A `shift` uniform adds a constant offset, sliding the whole picture inside the ribs.
+- **Anti-aliased seams:** `smoothFract` plus a `fadeX` ramp near each rib edge eases the distortion
+  back to neutral, so rib boundaries don't jag.
+- **Grid shapes:** lines, irregular lines (`.5 + .5·sin(.5x)·sin(1.7x)` added to x), wave
+  (`4·sin(.23y)`), zigzag and a 2D pattern. Each bends the rib lines by adding a curve to x.
+- **Highlights:** thin strokes about 2px wide at the rib boundaries (from `fwidth`), in a chosen colour.
+- **Shadows:** `pow(x, 1.3)` across each rib, strength squared, in a chosen colour.
+- **Blur:** a true one-directional Gaussian along the ribs (σ up to 50px), plus extra blur at margins.
+- **Stretch:** pulls `uv.y` toward the centre near rib edges, a vertical smear.
+- **Extras:** margins (inset glass panel with distorted edges), grain mixed into the distortion, and
+  a grain overlay.
+
+### n4.studio: Webflow's fluted glass ([write-up](https://www.n4.studio/feed/building-a-fluted-glass-component-for-webflow))
+
+- Three.js `ShaderMaterial` on a plane; all logic in the fragment shader.
+- Column boundaries are precomputed once into a lookup texture (one texture read per pixel).
+- Each column gets a *random* lateral offset from a hash (`fract(sin(i·12.99)·43758.5) − .5`). That's
+  flat, etched-looking glass without lens shading.
+- Backgrounds are pre-blurred on the CPU once (`ctx.filter = 'blur(15px)'`, with a downsample fallback
+  for Safari), so the shader never blurs per frame.
+
+### Others
+
+- [The Lazy God: Fluted Glass](https://thelazygod.com/snippets/fluted-glass) is a no-code Three.js
+  snippet (minified, with a YouTube walkthrough).
+- SVG `feDisplacementMap` approaches
+  ([Tuts+](https://webdesign.tutsplus.com/liquid-glass-effect-svg-filters--cms-109200t),
+  [LogRocket](https://blog.logrocket.com/how-create-liquid-glass-effects-css-and-svg/)) displace pixels
+  by a map image. They're fine for UI, but slow and imprecise for photo-sized images.
+
+### What this means for Loom's Glass
+
+Loom already does the core idea (per-rib shift, blur along ribs, edge light, colour fringe) on the CPU.
+Worth adopting:
+
+1. Larger shift range, measured in rib widths, plus a **Shift** control.
+2. Paper's shape curves (prism, lens, contour, cascade) as Glass types.
+3. Seam anti-aliasing (ease the shift to neutral over the last ~1px of each rib).
+4. **Wave** and **zigzag** rib shapes, plus any angle (diagonal).
+5. Optional highlight and shadow colours (e.g. warm highlight, cool shadow).
+6. Later, if slider drags feel slow on phones: move the pass to a WebGL fragment shader. The maths
+   above maps one-to-one onto GLSL.
