@@ -38,7 +38,7 @@ const v = {
   // Blank canvas: the generated base (soft colour blobs / gradient / plain)
   cbase: 'blobs',
   // Adjust tab: shape the pattern only (palette colours and the unmasked photo stay untouched)
-  adjPattern: false,
+  adjPattern: false, blur: 0,
   gltype: 'reeded', gldir: 'v', glrefract: 0.8, glfrost: 0.15, glhigh: 0.45, glshadow: 0.4, glfringe: 0.35, glirreg: false, glsurface: 0.45, glwidth: 1,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
@@ -66,13 +66,27 @@ function patternSource(W, H) {
   if (v.adjPattern) { rawCanvas.width = W; rawCanvas.height = H; rawCtx.drawImage(src, 0, 0); }
   if (invertsSource()) { sctx.save(); sctx.globalCompositeOperation = 'difference'; sctx.fillStyle = '#fff'; sctx.fillRect(0, 0, W, H); sctx.restore(); }
   if (v.adjPattern && adjusting()) { const d = sctx.getImageData(0, 0, W, H); adjustPass(d.data); sctx.putImageData(d, 0, 0); }
+  blurSource(W, H);
+}
+// Adjust › Blur softens the picture the pattern reads (and the plain photo, unless Adjust pattern only is on).
+// Blurred at a reduced size with the box blur and drawn back up smoothly, as canvas filters aren't on iPhone
+function blurSource(W, H) {
+  if (!(v.blur > 0)) return;
+  const rad = v.blur * Math.max(W, H) * 0.04, ds = Math.max(1, rad / 4), w = Math.max(2, Math.round(W / ds)), h = Math.max(2, Math.round(H / ds));
+  const sm = document.createElement('canvas'); sm.width = w; sm.height = h; const g = sm.getContext('2d', { willReadFrequently: true });
+  g.drawImage(src, 0, 0, w, h);
+  const d = g.getImageData(0, 0, w, h), D = d.data, A = new Float32Array(w * h * 3);
+  for (let i = 0, j = 0; i < D.length; i += 4, j += 3) { A[j] = D[i]; A[j + 1] = D[i + 1]; A[j + 2] = D[i + 2]; }
+  boxBlur(A, w, h, Math.max(1, Math.round(rad / ds)));
+  for (let i = 0, j = 0; i < D.length; i += 4, j += 3) { D[i] = A[j]; D[i + 1] = A[j + 1]; D[i + 2] = A[j + 2]; }
+  g.putImageData(d, 0, 0); sctx.imageSmoothingQuality = 'high'; sctx.drawImage(sm, 0, 0, W, H);
 }
 const rawCanvas = document.createElement('canvas'), rawCtx = rawCanvas.getContext('2d');
 const adjusting = () => v.bri !== 1 || v.con !== 1 || v.sat !== 1 || !!v.hue;
 // Adjustments on the finished pattern (the usual way) — skipped when they went into the source instead
 function adjustOut(O) { if (!v.adjPattern) adjustPass(O); }
 // Cache-key part: with Adjust pattern only on, the adjustments change the pattern itself
-const adjKey = () => v.adjPattern ? [v.bri, v.con, v.sat, v.hue] : 0;
+const adjKey = () => [v.blur, v.adjPattern ? [v.bri, v.con, v.sat, v.hue] : 0];
 function drawSource(W, H) {
   src.width = W; src.height = H;
   const L = Math.max(W, H), iw = srcW(), ih = srcH();
@@ -539,7 +553,7 @@ function renderNone(W, H, g, u) {
 // an edge highlight, a soft shadow and a fine seam. Scale sets rib width ----------
 function renderGlass(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['glass', v.adjPattern, W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glsurface, v.glwidth, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['glass', adjKey(), W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glsurface, v.glwidth, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
@@ -626,7 +640,7 @@ function glassPass(S, W, H, u) {
 // ---------- dither mode: the whole image reduced straight to a 2(+)-colour dither ----------
 function renderDither(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['dither', v.adjPattern, W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.scale, v.ddpal, v.ddvary, v.grain, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['dither', adjKey(), W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.scale, v.ddpal, v.ddvary, v.grain, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
@@ -768,7 +782,7 @@ function renderBlobs(W, H, g, u, live) {
 // so edges dissolve into coloured grain instead of a smooth gradient ----------
 function renderDiffuse(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['diffuse', v.adjPattern, W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.dfblend, v.dfbleed, v.dfshadow, v.dfspeck, v.dfsize, v.dfpal, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['diffuse', adjKey(), W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.dfblend, v.dfbleed, v.dfshadow, v.dfspeck, v.dfsize, v.dfpal, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
@@ -1312,19 +1326,21 @@ const CROP_ITEMS = [
 function MASK_ITEMS() { return [...SPLIT_ITEMS(), COMPARE_ITEM]; }
 const TABS = [
   { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'glass' ? GLASS_ITEMS : v.mode === 'blobs' ? BLOBS_ITEMS : v.mode === 'diffuse' ? DIFFUSE_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
-  // Adjust: the photo itself. Texture: what's laid over the result (grain, glow, blend, dither finish)
+  // Adjust: the photo itself (tone, blur, blending it back over the pattern). Texture: grain, glow, dither finish
   { id: 'adjust', label: 'Adjust', icon: IC.adjust, items: [
     // A blank canvas's generated base is chosen here, as it's the "photo" being adjusted
     when(C_('cbase', 'Canvas', IC.newcanvas, [['blobs', 'Soft colour'], ['gradient', 'Gradient'], ['plain', 'Plain']]), () => isCanvas()),
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
     S_('sat', 'Saturation', IC.drop, 0, 2, 0.01), S_('hue', 'Hue', IC.hue, -180, 180, 1),
+    S_('blur', 'Blur', IC.bleed, 0, 1, 0.01),
+    // Blend lays the photo back over the pattern in a blend mode (moved here from Texture)
+    C_('blend', 'Blend', IC.blend, [['none', 'Off'], ['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['hard-light', 'Hard light'], ['difference', 'Difference'], ['exclusion', 'Exclusion'], ['color', 'Colour'], ['luminosity', 'Luminosity']]),
+    when(S_('mix', 'Blend amount', IC.mix, 0, 1, 0.01), () => v.blend !== 'none'),
     T_('adjPattern', 'Adjust pattern only', IC.shapes)] },
   { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'glass' || v.mode === 'diffuse' ? COLOUR_COMMON : v.mode === 'blobs' ? COLOUR_BLOBS : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
   { id: 'texture', label: 'Texture', icon: IC.texture, items: [
     S_('grain', 'Grain', IC.noise, 0, 80, 1),
     S_('glow', 'Glow', IC.glow, 0, 2, 0.01), when(S_('gsize', 'Glow size', IC.radius, 2, 60, 1), () => v.glow > 0),
-    C_('blend', 'Blend', IC.blend, [['none', 'Off'], ['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['hard-light', 'Hard light'], ['color', 'Colour'], ['luminosity', 'Luminosity'], ['difference', 'Difference']]),
-    when(S_('mix', 'Blend amount', IC.mix, 0, 1, 0.01), () => v.blend !== 'none'),
     // Dither finish — hidden in Dither mode, which has its own; its settings show once a type is picked
     when(C_('dither', 'Dither', IC.dither, [['off', 'Off'], ['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), () => v.mode !== 'dither'),
     ...[S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), S_('dvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('dpal', 'Use palette', IC.palette)]
