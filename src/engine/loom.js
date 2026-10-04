@@ -1269,6 +1269,22 @@ const toast = t => { $('toast').textContent = t; $('toast').hidden = !t; };
 let flashT; const flash = t => { toast(t); clearTimeout(flashT); flashT = setTimeout(() => { if (!picking) toast(''); }, 1200); };
 
 // ---------- image in ----------
+// Loading: the woven loader appears only if opening takes a moment (no flash for quick loads)
+let loaderT = 0;
+function showLoading() { clearTimeout(loaderT); loaderT = setTimeout(() => { $('loader').hidden = false; }, 150); }
+function hideLoading() {
+  clearTimeout(loaderT); const l = $('loader'); if (l.hidden) return;
+  hideAfter(l, [{ opacity: 1 }, { opacity: 0 }], { duration: 200 }, () => { l.hidden = true; });
+}
+// Fade through from the start screen: it fades out while the artwork settles in, then the controls follow
+function revealEditor() {
+  const e = $('empty'); if (e.hidden) return;
+  hideAfter(e, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.98)' }], { duration: 260 }, () => { e.hidden = true; });
+  requestAnimationFrame(() => {
+    anim(out, [{ opacity: 0, transform: 'scale(.98)' }, { opacity: 1, transform: 'none' }], { duration: 480, delay: 140, fill: 'backwards' });
+    [$('vbar'), $('tabs'), $('topL')].forEach((el, i) => anim(el, [{ opacity: 0 }, { opacity: 1 }], { duration: 400, delay: 280 + i * 60, fill: 'backwards' }));
+  });
+}
 function loadFile(f, opts) {
   opts = opts || {};
   if (!f) return;
@@ -1277,7 +1293,9 @@ function loadFile(f, opts) {
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
   const im = new Image();
-  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
+  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
+  im.onerror = () => { hideLoading(); flash("Couldn't open that image"); };
+  showLoading();
   im.src = URL.createObjectURL(f);
   if (!opts.skipStore) storeFile(f).then(refreshLibraryIfOpen).catch(() => {});
 }
@@ -1340,6 +1358,7 @@ function maskMode() { return v.maskMove && v.split === 'patch'; }
 
 // ---------- video ----------
 function loadVideo(f, opts) {
+  showLoading();
   opts = opts || {};
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   const el = document.createElement('video');
@@ -1352,7 +1371,7 @@ function loadVideo(f, opts) {
   const ready = () => {
     if (started || !el.videoWidth || el.readyState < 2) return;
     const first = !img; started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
-    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
+    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
     toast(''); drawAll(); schedule(); showUI(); paintVbar(); frameLoop();
   };
   ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'timeupdate'].forEach(ev => el.addEventListener(ev, ready));
@@ -1820,4 +1839,6 @@ $('vsave').onclick = async () => {
 };
 
 layout();
+// Boot splash: let the woven loop show for a beat, then fade it away
+setTimeout(() => { const b = $('boot'); if (b) hideAfter(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 420 }, () => b.remove()); }, 550);
 }
