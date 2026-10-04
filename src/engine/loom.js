@@ -782,7 +782,7 @@ const IC = {
   aup: I("<path d=\"m5 12 7-7 7 7\" />  <path d=\"M12 19V5\" />"),
   adown: I("<path d=\"M12 5v14\" />  <path d=\"m19 12-7 7-7-7\" />"),
   original: I("<path d=\"M9 14 4 9l5-5\" />  <path d=\"M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11\" />"),
-  fullscreen: I("<path d=\"M8 3H5a2 2 0 0 0-2 2v3\" />  <path d=\"M21 8V5a2 2 0 0 0-2-2h-3\" />  <path d=\"M3 16v3a2 2 0 0 0 2 2h3\" />  <path d=\"M16 21h3a2 2 0 0 0 2-2v-3\" />"),
+  fullscreen: I("<path d=\"m15 15 6 6\" />  <path d=\"m15 9 6-6\" />  <path d=\"M21 16v5h-5\" />  <path d=\"M21 8V3h-5\" />  <path d=\"M3 16v5h5\" />  <path d=\"m3 21 6-6\" />  <path d=\"M3 8V3h5\" />  <path d=\"M9 9 3 3\" />"),
   reset: I("<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" />  <path d=\"M3 3v5h5\" />"),
   compare: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M12 3v18\" />"),
   shapes: I("<path d=\"M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z\" />  <rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\" />  <circle cx=\"17.5\" cy=\"17.5\" r=\"3.5\" />"),
