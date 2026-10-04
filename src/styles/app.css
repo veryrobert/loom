@@ -220,6 +220,8 @@ body.booting .empty > *{opacity:0; animation:none}
 /* Loading screen: each thread draws in once, in turn, and stays woven (the in-app loader keeps looping) */
 .boot .weave path{animation:weaveIn .6s cubic-bezier(.6,0,.3,1) both}
 @keyframes weaveIn{from{stroke-dashoffset:1; opacity:.35} to{stroke-dashoffset:0; opacity:1}}
+/* A short pause before the first thread, then the same offset as the loader (the shorthand above resets delays) */
+.boot .weave path:nth-child(1){animation-delay:0.35s} .boot .weave path:nth-child(2){animation-delay:0.44s} .boot .weave path:nth-child(3){animation-delay:0.53s} .boot .weave path:nth-child(4){animation-delay:0.62s} .boot .weave path:nth-child(5){animation-delay:0.71s} .boot .weave path:nth-child(6){animation-delay:0.80s} .boot .weave path:nth-child(7){animation-delay:0.89s} .boot .weave path:nth-child(8){animation-delay:0.98s}
 .loader{position:fixed; left:50%; top:50%; z-index:8; width:64px; height:64px; margin:-32px 0 0 -32px; border-radius:50%; display:grid; place-items:center;
   background:var(--glass-strong); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); pointer-events:none}
 .loader[hidden]{display:none}

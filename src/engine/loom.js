@@ -1839,7 +1839,7 @@ $('vsave').onclick = async () => {
 };
 
 layout();
-// Boot splash: the eight threads draw in once (last one done at ~1.25s), hold a beat, then fade away
+// Boot splash: a short pause, the eight threads draw in once (last one done at ~1.6s), hold a beat, then fade away
 // …and once it's clear, the start screen's pieces fade up in turn
-setTimeout(() => { const b = $('boot'); const done = () => { b && b.remove(); document.body.classList.remove('booting'); }; if (b) hideAfter(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 500 }, done); else done(); }, 1700);
+setTimeout(() => { const b = $('boot'); const done = () => { b && b.remove(); document.body.classList.remove('booting'); }; if (b) hideAfter(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 500 }, done); else done(); }, 2050);
 }
