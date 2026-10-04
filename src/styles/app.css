@@ -15,7 +15,8 @@ svg{display:block}
 #out{position:fixed; display:block; touch-action:none; border-radius:2px}
 .empty{position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--soft)}
 .empty[hidden]{display:none}
-.empty > button.glass{width:64px; height:64px; border-radius:50%; display:grid; place-items:center; color:#fff}
+.starts{display:flex; gap:14px}
+.starts > button.glass{width:64px; height:64px; border-radius:50%; display:grid; place-items:center; color:#fff}
 .ui{transition:opacity .45s ease}
 body.hideui .ui{opacity:0; pointer-events:none}
 .cbtn{position:relative; width:40px; height:40px; display:grid; place-items:center; border-radius:50%; cursor:pointer}
@@ -185,9 +186,9 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 /* ---------- Motion: quiet, quick, eased. Things grow from where you touched and settle ---------- */
 :root{ --ease:cubic-bezier(.2,.8,.2,1); }
 /* Press feedback: a slight give, then spring back */
-.tab,.item,.chip,.vbar > button,.topL button,.gal-back,.gal-actions button,.gal-tabs button,.callout button,.recent-item,.recent-all,#emptyUpload,.seg button,.xgo{
+.tab,.item,.chip,.vbar > button,.topL button,.gal-back,.gal-actions button,.gal-tabs button,.callout button,.recent-item,.recent-all,#emptyUpload,#emptyCanvas,.seg button,.xgo{
   transition:transform .22s var(--ease), background-color .2s ease, color .2s ease, opacity .2s ease}
-.tab:active,.item:active,.chip:active,.vbar > button:active,.topL button:active,.gal-back:active,.gal-actions button:active,.recent-item:active,.recent-all:active,#emptyUpload:active,.seg button:active,.xgo:active{transform:scale(.93)}
+.tab:active,.item:active,.chip:active,.vbar > button:active,.topL button:active,.gal-back:active,.gal-actions button:active,.recent-item:active,.recent-all:active,#emptyUpload:active,#emptyCanvas:active,.seg button:active,.xgo:active{transform:scale(.93)}
 .gal-tabs button:active{transform:scale(.96)}
 .gal-tile{transition:transform .25s var(--ease)}
 .gal-tile:active,.gal-tile.holding{transform:scale(.97)}

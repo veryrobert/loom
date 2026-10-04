@@ -33,6 +33,10 @@ const v = {
   // (×0.7) and Dither mode dots (×0.2); density zones vary it across the image
   mode: 'none', scale: 10, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
   mdir: 'h', mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30,
+  blstyle: 'blobs', blgrid: 'diag', blsize: 0.9, blneck: 0.6, bllinks: 0.65, blthresh: 0.4, blrand: 0.25, blcol: 'mono',
+  dfblend: 'shadow', dfbleed: 0.5, dfshadow: 0.6, dfspeck: 0.55, dfsize: 1, dfpal: true,
+  // Blank canvas: the generated base (soft colour blobs / gradient / plain)
+  cbase: 'blobs',
   gltype: 'reeded', gldir: 'v', glrefract: 0.8, glfrost: 0.15, glhigh: 0.45, glshadow: 0.4, glfringe: 0.35, glirreg: false, glsurface: 0.45, glwidth: 1,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
@@ -45,14 +49,14 @@ const rgb2hex = c => '#' + c.map(x => Math.max(0, Math.min(255, Math.round(x))).
 function hash2(a, b, sd) { let h = Math.imul(a * 374761393 + b * 668265263 + sd * 2246822519, 1274126177); h ^= h >>> 13; h = Math.imul(h, 1103515245); h ^= h >>> 16; return (h >>> 0) / 4294967296; }
 function nearestIdx(c, pal) { let bi = 0, bd = 1e9; for (let j = 0; j < pal.length; j++) { const p = pal[j], d = (c[0] - p[0]) ** 2 * .3 + (c[1] - p[1]) ** 2 * .59 + (c[2] - p[2]) ** 2 * .11; if (d < bd) { bd = d; bi = j; } } return bi; }
 function nearest(c, pal) { let best = pal[0], bd = 1e9; for (const p of pal) { const d = (c[0] - p[0]) ** 2 * .3 + (c[1] - p[1]) ** 2 * .59 + (c[2] - p[2]) ** 2 * .11; if (d < bd) { bd = d; best = p; } } return best; }
-const srcW = () => img ? (img.videoWidth || img.naturalWidth) : 1, srcH = () => img ? (img.videoHeight || img.naturalHeight) : 1;
+const srcW = () => img ? (img.videoWidth || img.naturalWidth || img.width) : 1, srcH = () => img ? (img.videoHeight || img.naturalHeight || img.height) : 1;
 let vid = null, recording = false, recLong = 1080;
 const ratio = () => v.format === 'screen' ? innerWidth / innerHeight : v.format === 'image' ? (img ? srcW() / srcH() : innerWidth / innerHeight) : parseFloat(v.format);
 
 // ---------- rendering ----------
 // The photo as patterns see it. Global Invert flips light and dark here for None, Pixel, Shapes and Dither;
-// Glyph and Martens swap ink and paper in their geometry instead, keeping their exact palette colours
-const invertsSource = () => v.invert && v.mode !== 'glyph' && v.mode !== 'martens';
+// Glyph, Martens and Blobs swap ink and paper in their geometry instead, keeping their exact palette colours
+const invertsSource = () => v.invert && v.mode !== 'glyph' && v.mode !== 'martens' && v.mode !== 'blobs';
 function patternSource(W, H) {
   drawSource(W, H);
   if (invertsSource()) { sctx.save(); sctx.globalCompositeOperation = 'difference'; sctx.fillStyle = '#fff'; sctx.fillRect(0, 0, W, H); sctx.restore(); }
@@ -77,7 +81,8 @@ function dither(O, W, H, u, pal, o = { type: v.dither, levels: v.dlevels, size: 
   // its own colours kept as anchors and the extra levels blended evenly between neighbours
   let ramp = pal;
   if (usePal && Lv > pal.length && pal.length > 1) {
-    const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    const EDGE_A = [0, 2, 0, 1], EDGE_B = [1, 3, 2, 3]; // a cell's top, bottom, left and right edges as corner pairs
+const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     const P = pal.slice().sort((a, b) => lum(a) - lum(b)), segs = P.length - 1, extra = Lv - P.length;
     ramp = [P[0]];
     for (let s = 0; s < segs; s++) {
@@ -328,7 +333,8 @@ function glyphOps(shape, mx, my, d) {
 function shapeGeometry(W, H, u, S) {
   const shown = palette.length ? palette : ['#000000', '#ffffff'];
   const pal = (paletteSrc.length === palette.length && palette.length ? paletteSrc : shown).map(hex2rgb);
-  const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const EDGE_A = [0, 2, 0, 1], EDGE_B = [1, 3, 2, 3]; // a cell's top, bottom, left and right edges as corner pairs
+const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
   const cs = Math.max(2, v.scale * u), nx = Math.ceil(W / cs), ny = Math.ceil(H / cs);
   const custom = v.ground === 'custom', gc = hex2rgb(v.groundColor);
   let gi = v.ground === 'lightest' ? pal.length - 1 : v.ground === 'darkest' ? 0 : -1;
@@ -645,6 +651,216 @@ function renderMartens(W, H, g, u, live) {
   try { renderShapes(W, H, g, u, live); } finally { Object.assign(v, keep); }
 }
 
+// Shared ending for the newer per-pixel modes: Texture's dither finish, grain and blend, then the Mask composite
+function finishLayer(O, W, H, g, u) {
+  tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
+  fin.width = W; fin.height = H; fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; fctx.drawImage(tmp, 0, 0);
+  ditherFinish(W, H, u);
+  if (v.dither !== 'off') grainFinish(W, H);
+  if (v.blend !== 'none' && v.mix > 0) { fctx.globalCompositeOperation = v.blend; fctx.globalAlpha = v.mix; fctx.drawImage(src, 0, 0); fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; }
+  g.drawImage(adjustedSource(W, H), 0, 0);
+  for (const [qx, qy, qw, qh] of regions(W, H)) { const w2 = Math.min(qw, W - qx), h2 = Math.min(qh, H - qy); if (w2 > 0 && h2 > 0) g.drawImage(fin, qx, qy, w2, h2, qx, qy, w2, h2); }
+}
+const EDGE_A = [0, 2, 0, 1], EDGE_B = [1, 3, 2, 3]; // a cell's top, bottom, left and right edges as corner pairs
+const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+
+// ---------- blobs mode: organic "molecule" tiles. A grid of round dots (on where the image is dark, plus a
+// little chance); neighbouring dots join with a smooth pinched bridge (a smooth-min of the two circles'
+// distance fields), or with a thin straight link in Molecule style. Square or 45° grid. Drawn as a signed
+// distance field, so edges are anti-aliased at any size. Ink and paper are the palette's darkest and
+// lightest; Palette colours each dot from the image ----------
+function renderBlobs(W, H, g, u, live) {
+  patternSource(W, H);
+  const pkey = JSON.stringify(['blobs', W, H, v.zoom, v.panX, v.panY, palette, v.scale, v.blstyle, v.blgrid, v.blsize, v.blneck, v.bllinks, v.blthresh, v.blrand, v.blcol, v.invert, v.grain, v.dither, seed, imgId]);
+  let base;
+  if (live && cache && cache.pkey === pkey) base = cache.O;
+  else {
+    const S = sctx.getImageData(0, 0, W, H).data;
+    const pal = (palette.length ? palette : ['#111111', '#f2efe8']).map(hex2rgb).sort((a, b) => lum(a) - lum(b));
+    let ink = pal[0], paper = pal[pal.length - 1];
+    if (v.invert) [ink, paper] = [paper, ink];
+    const inks = pal.filter(c => c !== paper);
+    const c = Math.max(6, v.scale * 3.4 * u), r = Math.max(1.5, v.blsize * c / 2 * (v.blstyle === 'molecule' ? 0.55 : 1)), diag = v.blgrid === 'diag', R2 = Math.SQRT1_2;
+    // rotated lattice coordinates: p along, q across (identity for the square grid)
+    const toP = diag ? (x, y) => (x + y) * R2 : (x) => x, toQ = diag ? (x, y) => (y - x) * R2 : (x, y) => y;
+    const q0 = diag ? -W * R2 - c : -c, p0 = -c, p1 = diag ? (W + H) * R2 + c : W + c, q1 = diag ? H * R2 + c : H + c;
+    const ni = Math.ceil((p1 - p0) / c) + 2, nj = Math.ceil((q1 - q0) / c) + 2;
+    const on = new Uint8Array(ni * nj), col = new Int16Array(ni * nj), lr = new Uint8Array(ni * nj), ld = new Uint8Array(ni * nj);
+    const sd = seed * 13 + 1;
+    for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
+      const p = p0 + i * c, q = q0 + j * c, x = diag ? (p - q) * R2 : p, y = diag ? (p + q) * R2 : q;
+      if (x < -c || y < -c || x > W + c || y > H + c) continue;
+      const sx = Math.min(W - 1, Math.max(0, Math.round(x))), sy = Math.min(H - 1, Math.max(0, Math.round(y))), k = (sy * W + sx) * 4;
+      const sc = [S[k], S[k + 1], S[k + 2]], dark = 1 - lum(sc) / 255;
+      const score = dark * (1 - v.blrand) + hash2(i, j, sd) * v.blrand, n = j * ni + i;
+      on[n] = score > v.blthresh ? 1 : 0;
+      col[n] = v.blcol === 'palette' && inks.length > 1 ? nearestIdx(sc, inks) : 0;
+    }
+    for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
+      const n = j * ni + i; if (!on[n]) continue;
+      if (i + 1 < ni && on[n + 1] && hash2(i, j, sd + 7) < v.bllinks) lr[n] = 1;
+      if (j + 1 < nj && on[n + ni] && hash2(i, j, sd + 11) < v.bllinks) ld[n] = 1;
+    }
+    const mol = v.blstyle === 'molecule';
+    const hw = mol ? Math.max(0.6 * u, v.blneck * r * 0.3) : Math.max(0.5 * u, v.blneck * r * 0.8);
+    // Distance to a link between corner dots a and b (always one cell long, along p or q). Molecule: a thin
+    // straight line. Blobs: a bridge whose half-width narrows from the dot radius at each end to hw at the
+    // middle along a parabola, giving the pinched, concave waist of the reference tiles
+    const link = (px, py, ax, ay, bx, by) => {
+      const along = ax === bx ? (py - ay) / (by - ay) : (px - ax) / (bx - ax), s = ax === bx ? Math.abs(px - ax) : Math.abs(py - ay);
+      const t = Math.max(0, Math.min(1, along));
+      if (mol) return Math.hypot(s, (along - t) * c) - hw;
+      const m = (2 * t - 1) * (2 * t - 1);
+      return Math.max(s - (hw + (r - hw) * m), (Math.abs(along - 0.5) - 0.5) * c);
+    };
+    const O = new Uint8ClampedArray(W * H * 4), inkC = inks.length ? inks : [ink];
+    const dc = [0, 0, 0, 0];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const p = toP(x + 0.5, y + 0.5) - p0, q = toQ(x + 0.5, y + 0.5) - q0;
+      const i0 = Math.floor(p / c), j0 = Math.floor(q / c), fp = p - i0 * c, fq = q - j0 * c;
+      let d = 1e9, best = -1, bd = 1e9;
+      // the cell's four corner dots
+      for (let t = 0; t < 4; t++) {
+        const ii = i0 + (t & 1), jj = j0 + (t >> 1), n = jj * ni + ii;
+        if (ii < 0 || jj < 0 || ii >= ni || jj >= nj || !on[n]) { dc[t] = 1e9; continue; }
+        dc[t] = Math.hypot(fp - (t & 1) * c, fq - (t >> 1) * c) - r;
+        if (dc[t] < bd) { bd = dc[t]; best = n; }
+        if (dc[t] < d) d = dc[t];
+      }
+      // the cell's four edges: top (0-1), bottom (2-3), left (0-2), right (1-3)
+      const n0 = j0 * ni + i0;
+      if (n0 >= 0 && best >= 0) for (let e = 0; e < 4; e++) {
+        const a = EDGE_A[e], b2 = EDGE_B[e], l = e === 0 ? lr[n0] : e === 1 ? lr[n0 + ni] : e === 2 ? ld[n0] : ld[n0 + 1];
+        if (!l || dc[a] > 1e8 || dc[b2] > 1e8) continue;
+        d = Math.min(d, link(fp, fq, (a & 1) * c, (a >> 1) * c, (b2 & 1) * c, (b2 >> 1) * c));
+      }
+      const al = Math.max(0, Math.min(1, 0.5 - d)), o = (y * W + x) * 4, ic = best >= 0 ? inkC[col[best] % inkC.length] : ink;
+      O[o] = paper[0] + (ic[0] - paper[0]) * al; O[o + 1] = paper[1] + (ic[1] - paper[1]) * al; O[o + 2] = paper[2] + (ic[2] - paper[2]) * al; O[o + 3] = 255;
+    }
+    if (v.dither === 'off') grainPass(O);
+    base = O; if (live) cache = { pkey, O: O.slice() };
+  }
+  const O = base.slice();
+  glowPass(O, W, H, u); adjustPass(O);
+  finishLayer(O, W, H, g, u);
+}
+
+// ---------- diffuse mode: colour that bleeds. The image is blurred into soft fields, then each pixel is
+// mapped onto the palette with soft weights. Blend decides what happens where two colours meet: Shadow
+// multiplies them (a dark seam, like overlapping inks), Glow screens them (a light seam), Difference
+// subtracts them (dark where alike, inverted where not), Soft just mixes.
+// Speckle picks a palette colour at random by those weights and scatters the sample position a little,
+// so edges dissolve into coloured grain instead of a smooth gradient ----------
+function renderDiffuse(W, H, g, u, live) {
+  patternSource(W, H);
+  const pkey = JSON.stringify(['diffuse', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.dfblend, v.dfbleed, v.dfshadow, v.dfspeck, v.dfsize, v.dfpal, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
+  let O;
+  if (live && cache && cache.pkey === pkey) O = cache.O.slice();
+  else {
+    // blur at a reduced size (cheap, and the result is smooth anyway), then sample it back up
+    const L = Math.max(W, H), rad = 2 + v.dfbleed * L * 0.09, ds = Math.max(1, rad / 10);
+    const w = Math.max(2, Math.round(W / ds)), h = Math.max(2, Math.round(H / ds));
+    const sm = document.createElement('canvas'); sm.width = w; sm.height = h; const sg = sm.getContext('2d', { willReadFrequently: true });
+    sg.drawImage(src, 0, 0, w, h);
+    const D = sg.getImageData(0, 0, w, h).data;
+    if (v.photoColour && paletteShifted()) recolourPass(D);
+    adjustPass(D);
+    const A = new Float32Array(w * h * 3); for (let i = 0, j = 0; i < D.length; i += 4, j += 3) { A[j] = D[i]; A[j + 1] = D[i + 1]; A[j + 2] = D[i + 2]; }
+    boxBlur(A, w, h, Math.max(1, Math.round(rad / ds)));
+    const fx = (w - 1) / Math.max(1, W - 1), fy = (h - 1) / Math.max(1, H - 1);
+    const at = (x, y, out) => { // bilinear sample of the blurred field at full-size coords
+      const X = Math.max(0, Math.min(w - 1.001, x * fx)), Y = Math.max(0, Math.min(h - 1.001, y * fy)), x0 = X | 0, y0 = Y | 0, tx = X - x0, ty = Y - y0;
+      const a = (y0 * w + x0) * 3, b = a + 3, c2 = a + w * 3, d2 = c2 + 3;
+      for (let ch = 0; ch < 3; ch++) out[ch] = (A[a + ch] * (1 - tx) + A[b + ch] * tx) * (1 - ty) + (A[c2 + ch] * (1 - tx) + A[d2 + ch] * tx) * ty;
+    };
+    const usePal = v.dfpal && palette.length > 1, P = palette.map(hex2rgb), k = P.length;
+    const wt = new Float32Array(k), boost = 1 + v.dfshadow * 1.6, T = 5000;
+    const blk = Math.max(1, Math.round(v.dfsize * u * 1.2)), jit = v.dfspeck * rad * 0.35;
+    O = new Uint8ClampedArray(W * H * 4);
+    const s = [0, 0, 0];
+    for (let by = 0; by < H; by += blk) for (let bx = 0; bx < W; bx += blk) {
+      const h1 = hash2(bx, by, seed * 3 + 1), h2 = hash2(by, bx, seed * 5 + 2), h3 = hash2(bx + 7, by + 3, seed * 7 + 3);
+      // speckle scatters where the colour is read from, so neighbouring colours spill across edges
+      const ang = h1 * 6.2832, dist = jit * Math.sqrt(h2);
+      at(bx + Math.cos(ang) * dist, by + Math.sin(ang) * dist, s);
+      let r = s[0], gg = s[1], b = s[2];
+      if (usePal) {
+        let sum = 0;
+        for (let j = 0; j < k; j++) { const p = P[j], d = (r - p[0]) ** 2 * .3 + (gg - p[1]) ** 2 * .59 + (b - p[2]) ** 2 * .11; wt[j] = Math.exp(-d / T); sum += wt[j]; }
+        if (sum < 1e-9) { wt.fill(0); wt[nearestIdx(s, P)] = 1; sum = 1; }
+        for (let j = 0; j < k; j++) wt[j] /= sum;
+        let nr = 0, ng = 0, nb = 0; for (let j = 0; j < k; j++) { nr += wt[j] * P[j][0]; ng += wt[j] * P[j][1]; nb += wt[j] * P[j][2]; }
+        if (v.dfblend === 'soft') { r = nr; gg = ng; b = nb; }
+        else {
+          // each colour is a layer at opacity (weight × boost): multiply darkens overlaps, screen lightens them
+          let mr = 1, mg = 1, mb = 1; const scr = v.dfblend === 'glow', dif = v.dfblend === 'difference';
+          if (dif) mr = mg = mb = 0;
+          for (let j = 0; j < k; j++) {
+            const a = Math.min(1, wt[j] * boost); if (a < 0.002) continue;
+            const p = P[j];
+            // difference: each colour layer subtracts from what's below, so overlaps of similar colours go dark
+            // and unlike ones flip to vivid, inverted hues
+            if (dif) { mr += (Math.abs(mr - p[0] / 255) - mr) * a; mg += (Math.abs(mg - p[1] / 255) - mg) * a; mb += (Math.abs(mb - p[2] / 255) - mb) * a; }
+            else if (scr) { mr *= 1 - a * p[0] / 255; mg *= 1 - a * p[1] / 255; mb *= 1 - a * p[2] / 255; }
+            else { mr *= 1 - a * (1 - p[0] / 255); mg *= 1 - a * (1 - p[1] / 255); mb *= 1 - a * (1 - p[2] / 255); }
+          }
+          if (scr) { mr = 1 - mr; mg = 1 - mg; mb = 1 - mb; }
+          const sh = v.dfshadow; r = nr + (mr * 255 - nr) * sh; gg = ng + (mg * 255 - ng) * sh; b = nb + (mb * 255 - nb) * sh;
+        }
+        // speckle: some blocks take one palette colour outright, picked at random by weight
+        if (h3 < v.dfspeck * 0.85) {
+          let pick = hash2(by + 11, bx + 5, seed * 9 + 4), j = 0; while (j < k - 1 && pick > wt[j]) { pick -= wt[j]; j++; }
+          const m = 0.55 + 0.45 * v.dfspeck; r += (P[j][0] - r) * m; gg += (P[j][1] - gg) * m; b += (P[j][2] - b) * m;
+        }
+      } else if (v.dfspeck > 0) { const n = (h3 - 0.5) * 90 * v.dfspeck; r += n; gg += n; b += n; }
+      const ye = Math.min(H, by + blk), xe = Math.min(W, bx + blk);
+      for (let y = by; y < ye; y++) for (let x = bx; x < xe; x++) { const o = (y * W + x) * 4; O[o] = r; O[o + 1] = gg; O[o + 2] = b; O[o + 3] = 255; }
+    }
+    glowPass(O, W, H, u);
+    if (v.dither === 'off') grainPass(O);
+    if (live) cache = { pkey, O: O.slice() };
+  }
+  finishLayer(O, W, H, g, u);
+}
+
+// ---------- blank canvas: a generated picture to start from instead of a photo. It's drawn from the
+// palette (and Shuffle), so patterns have light and dark to follow: soft colour blobs, a gradient, or plain.
+// It regenerates whenever the palette, the base or the seed changes ----------
+const canvasImg = document.createElement('canvas');
+const isCanvas = () => img === canvasImg;
+let canvasKey = '';
+function drawCanvasBase() {
+  const w = 120, h = 150, sm = document.createElement('canvas'); sm.width = w; sm.height = h;
+  const c = sm.getContext('2d'), rnd = mulberry(seed * 41 + 9);
+  const P = (palette.length ? palette : ['#1B1B3A', '#3D5AFE', '#FF6F61', '#FFE8D6']).slice().sort((a, b) => lum(hex2rgb(a)) - lum(hex2rgb(b)));
+  if (v.cbase === 'plain') { c.fillStyle = P[Math.floor((P.length - 1) / 2)]; c.fillRect(0, 0, w, h); }
+  else if (v.cbase === 'gradient') {
+    const a = rnd() * Math.PI * 2, L = Math.hypot(w, h) / 2, gr = c.createLinearGradient(w / 2 - Math.cos(a) * L, h / 2 - Math.sin(a) * L, w / 2 + Math.cos(a) * L, h / 2 + Math.sin(a) * L);
+    P.forEach((col, i) => gr.addColorStop(P.length > 1 ? i / (P.length - 1) : 0, col)); c.fillStyle = gr; c.fillRect(0, 0, w, h);
+  } else {
+    c.fillStyle = P[P.length - 1]; c.fillRect(0, 0, w, h);
+    // every palette colour gets a couple of overlapping blobs, in shuffled order
+    const cols = P.slice(0, -1).flatMap(c => [c, c]), n = Math.max(6, cols.length + 2);
+    for (let i = cols.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [cols[i], cols[j]] = [cols[j], cols[i]]; }
+    for (let i = 0; i < n; i++) {
+      const col = cols[i % cols.length] || P[0], x = rnd() * w, y = rnd() * h, rr = (0.18 + rnd() * 0.3) * Math.max(w, h);
+      const gr = c.createRadialGradient(x, y, 0, x, y, rr), rgb = hex2rgb(col).join(',');
+      gr.addColorStop(0, `rgba(${rgb},1)`); gr.addColorStop(0.45, `rgba(${rgb},.75)`); gr.addColorStop(1, `rgba(${rgb},0)`);
+      c.fillStyle = gr; c.fillRect(0, 0, w, h);
+    }
+  }
+  canvasImg.width = 1600; canvasImg.height = 2000;
+  const g = canvasImg.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(sm, 0, 0, 1600, 2000);
+}
+// Keep the canvas in step with its inputs; called before every draw
+function syncCanvas() {
+  if (!isCanvas()) return;
+  const key = JSON.stringify([v.cbase, palette, seed]);
+  if (key === canvasKey) return;
+  canvasKey = key; drawCanvasBase(); imgId++; cache = null;
+  paletteSrc = palette.slice(); // the canvas is made from the palette, so there's nothing to recolour
+}
+
 // ---------- density zones: re-render at several densities, then tile ----------
 function zoneRects(W, H) {
   const r = mulberry(seed * 19 + 7), n = v.zones, L = Math.min(4, n), out = [];
@@ -678,6 +894,7 @@ function renderZones(W, H, target) {
 }
 
 function render(W, H, target) {
+  syncCanvas();
   if (v.zmode !== 'off' && img) return renderZones(W, H, target);
   const g = target.getContext('2d');
   target.width = W; target.height = H;
@@ -686,6 +903,8 @@ function render(W, H, target) {
   const live = target === out;
   if (v.mode === 'none') return renderNone(W, H, g, u);
   if (v.mode === 'glass') return renderGlass(W, H, g, u, live);
+  if (v.mode === 'blobs') return renderBlobs(W, H, g, u, live);
+  if (v.mode === 'diffuse') return renderDiffuse(W, H, g, u, live);
   if (v.mode === 'shapes') return renderShapes(W, H, g, u, live);
   if (v.mode === 'dither') return renderDither(W, H, g, u, live);
   if (v.mode === 'glyph') return renderGlyph(W, H, g, u, live);
@@ -910,6 +1129,11 @@ const IC = {
   mscale: I("<path d=\"M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7\" />  <path d=\"M14 15H9v-5\" />  <path d=\"M16 3h5v5\" />  <path d=\"M21 3 9 15\" />"),
   maskreset: I("<path d=\"M20 9V7a2 2 0 0 0-2-2h-6\" />  <path d=\"m15 2-3 3 3 3\" />  <path d=\"M20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2\" />"),
   roller: I("<rect width=\"16\" height=\"6\" x=\"2\" y=\"2\" rx=\"2\" />  <path d=\"M10 16v-2a2 2 0 0 1 2-2h8a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2\" />  <rect width=\"4\" height=\"6\" x=\"8\" y=\"16\" rx=\"1\" />"),
+  link: I("<circle cx=\"6.5\" cy=\"12\" r=\"4\" />  <circle cx=\"17.5\" cy=\"12\" r=\"4\" />  <path d=\"M10.5 11q1.5 1 3 0\" />  <path d=\"M10.5 13q1.5 -1 3 0\" />"),
+  network: I("<circle cx=\"5\" cy=\"6\" r=\"2\" />  <circle cx=\"19\" cy=\"6\" r=\"2\" />  <circle cx=\"12\" cy=\"19\" r=\"2\" />  <path d=\"M7 6h10\" />  <path d=\"m6 8 5 9\" />  <path d=\"m18 8-5 9\" />"),
+  diag: I("<path d=\"M3 21 21 3\" />  <path d=\"M3 12 12 3\" />  <path d=\"m12 21 9-9\" />"),
+  bleed: I("<circle cx=\"12\" cy=\"12\" r=\"3\" />  <circle cx=\"12\" cy=\"12\" r=\"6.5\" stroke-dasharray=\"1.5 2.5\" />  <circle cx=\"12\" cy=\"12\" r=\"10\" stroke-dasharray=\"1 4\" />"),
+  newcanvas: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M12 8v8\" />  <path d=\"M8 12h8\" />"),
   library: I("<path d=\"m16 6 4 14\" />  <path d=\"M12 6v14\" />  <path d=\"M8 8v12\" />  <path d=\"M4 4v16\" />"),
 };
 $('vlib').innerHTML = IC.library;
@@ -924,7 +1148,7 @@ const FORMATS = [['image', 'Original', IC.original], ['screen', 'Full screen', I
 // Switch to hide Martens from the Mode picker without removing it
 const MARTENS_ON = true;
 // Pattern list. Its round button is hidden: tapping the Pattern tab is how you get back to it
-const MODE_ITEM = Object.assign(C_('mode', 'Pattern', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : []), ['glass', 'Glass']]), { hideButton: true, onPick: () => {
+const MODE_ITEM = Object.assign(C_('mode', 'Pattern', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : []), ['glass', 'Glass'], ['blobs', 'Blobs'], ['diffuse', 'Diffuse']]), { hideButton: true, onPick: () => {
   builtTab = null; selIdx.pattern = 0; selIdx.colour = 0; settleArt();
   primeMode();
 } });
@@ -983,6 +1207,17 @@ const GLASS_ITEMS = [MODE_ITEM,
     when(S_('glfringe', 'Colour fringe', IC.hue, 0, 1, 0.01), () => v.gltype !== 'frosted'),
     S_('glsurface', 'Surface', IC.noise, 0, 1, 0.01),
     T_('glirreg', 'Irregular ribs', IC.uneven)];
+const BLOBS_ITEMS = [MODE_ITEM,
+    C_('blstyle', 'Style', IC.shapes, [['blobs', 'Blobs', IC.link], ['molecule', 'Molecules', IC.network]]),
+    C_('blgrid', 'Grid', IC.grid, [['diag', 'Diagonal', IC.diag], ['square', 'Square', IC.cell]]),
+    S_('blsize', 'Dot size', IC.dot, 0.3, 1, 0.01), S_('blneck', 'Bridge', IC.width, 0, 1, 0.01),
+    S_('bllinks', 'Links', IC.merge, 0, 1, 0.01), S_('blthresh', 'Threshold', IC.contrast, 0, 1, 0.01), S_('blrand', 'Random', IC.dice, 0, 1, 0.01)];
+const DIFFUSE_ITEMS = [MODE_ITEM,
+    C_('dfblend', 'Blend', IC.blend, [['shadow', 'Shadow'], ['soft', 'Soft'], ['glow', 'Glow'], ['difference', 'Difference']]),
+    S_('dfbleed', 'Bleed', IC.bleed, 0, 1, 0.01),
+    when(S_('dfshadow', 'Strength', IC.contrast, 0, 1, 0.01), () => v.dfblend !== 'soft' && v.dfpal),
+    S_('dfspeck', 'Speckle', IC.noise, 0, 1, 0.01), S_('dfsize', 'Speckle size', IC.size, 1, 6, 1),
+    T_('dfpal', 'Use palette', IC.palette)];
 const MARTENS_ITEMS = [MODE_ITEM,
     C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical'], ['d', 'Diagonal']]),
     when(S_('mangle', 'Angle', IC.ruler, 5, 85, 1), () => v.mdir === 'd'),
@@ -1040,6 +1275,7 @@ const COLOUR_SHAPES = [
     when({ t: 'k', key: 'groundColor', label: 'Background colour', icon: IC.fill, onSet: () => { v.ground = 'custom'; } }, () => v.ground !== 'image'),
     ...COLOUR_COMMON];
 const COLOUR_GLYPH = COLOUR_COMMON;
+const COLOUR_BLOBS = [C_('blcol', 'Ink', IC.tone, [['mono', 'Mono'], ['palette', 'Palette']]), ...COLOUR_COMMON];
 const COLOUR_MARTENS = COLOUR_COMMON;
 const COLOUR_DITHER = COLOUR_COMMON;
 const SPLIT_CHOICE = Object.assign(C_('split', 'Treated area', IC.split, [[1, 'Full', IC.full], [2 / 3, '⅔'], [0.5, '½'], [1 / 3, '⅓'], [0.25, '¼'], ['patch', 'Patches', IC.patch]]), { onPick: () => { builtTab = null; } });
@@ -1060,12 +1296,14 @@ const CROP_ITEMS = [
     COMPARE_ITEM];
 function MASK_ITEMS() { return [...SPLIT_ITEMS(), COMPARE_ITEM]; }
 const TABS = [
-  { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'glass' ? GLASS_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
+  { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'glass' ? GLASS_ITEMS : v.mode === 'blobs' ? BLOBS_ITEMS : v.mode === 'diffuse' ? DIFFUSE_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
   // Adjust: the photo itself. Texture: what's laid over the result (grain, glow, blend, dither finish)
   { id: 'adjust', label: 'Adjust', icon: IC.adjust, items: [
+    // A blank canvas's generated base is chosen here, as it's the "photo" being adjusted
+    when(C_('cbase', 'Canvas', IC.newcanvas, [['blobs', 'Soft colour'], ['gradient', 'Gradient'], ['plain', 'Plain']]), () => isCanvas()),
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
     S_('sat', 'Saturation', IC.drop, 0, 2, 0.01), S_('hue', 'Hue', IC.hue, -180, 180, 1)] },
-  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'glass' ? COLOUR_COMMON : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
+  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'glass' || v.mode === 'diffuse' ? COLOUR_COMMON : v.mode === 'blobs' ? COLOUR_BLOBS : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
   { id: 'texture', label: 'Texture', icon: IC.texture, items: [
     S_('grain', 'Grain', IC.noise, 0, 80, 1),
     S_('glow', 'Glow', IC.glow, 0, 2, 0.01), when(S_('gsize', 'Glow size', IC.radius, 2, 60, 1), () => v.glow > 0),
@@ -1092,10 +1330,12 @@ function ringSVG(n) {
   const r = 26, c = 2 * Math.PI * r;
   return `<svg class="ring" viewBox="0 0 56 56"><circle cx="28" cy="28" r="${r}" fill="none" stroke="#FFD60A" stroke-width="2" stroke-dasharray="${(c * n).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 28 28)" stroke-linecap="round"/></svg>`;
 }
+// None and Diffuse have nothing grid-sized, so the Scale tab is hidden for them
+const noScale = () => v.mode === 'none' || v.mode === 'diffuse';
 function drawTabs() {
   const nav = $('tabs'); nav.innerHTML = '';
-  if (v.mode === 'none' && tabId === 'scale') tabId = null;
-  TABS.filter(t => !t.hidden && !(v.mode === 'none' && t.id === 'scale')).forEach(t => {
+  if (noScale() && tabId === 'scale') tabId = null;
+  TABS.filter(t => !t.hidden && !(noScale() && t.id === 'scale')).forEach(t => {
     const b = document.createElement('button'); b.className = 'tab'; b.dataset.label = t.label; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', t.id === tabId);
     b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => {
       // Pattern always lands on the Mode overview: tapping it inside a pattern's settings goes back there,
@@ -1300,9 +1540,9 @@ let currentFileId = null, sessionT = 0;
 const SESSION_KEY = 'loom.session';
 function saveSession() {
   clearTimeout(sessionT);
-  if (!img || currentFileId == null) return;
+  if (!img || (currentFileId == null && !isCanvas())) return;
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ fileId: currentFileId, v, seed, palette, paletteSrc, paletteAuto,
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ fileId: isCanvas() ? null : currentFileId, canvas: isCanvas(), v, seed, palette, paletteSrc, paletteAuto,
       primed: { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } }));
   } catch { /* storage full or blocked: nothing to restore later, which is fine */ }
 }
@@ -1346,6 +1586,26 @@ function loadFile(f, opts) {
   if ('fileId' in opts) currentFileId = opts.fileId;
   if (!opts.skipStore) storeFile(f).then(id => { currentFileId = id; refreshLibraryIfOpen(); saveSessionSoon(); }).catch(() => {});
 }
+// A blank canvas: a random palette and the generated soft-colour base, opening on the pattern list
+function newCanvas(opts) {
+  opts = opts || {};
+  if (vid) { vid.pause(); vid.remove(); vid = null; }
+  ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
+  if (!opts.restore) {
+    const P = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+    palette = P.slice(); paletteSrc = palette.slice(); paletteAuto = false;
+    seed = Math.floor(Math.random() * 1e6); v.cbase = 'blobs';
+  }
+  img = canvasImg; canvasKey = ''; currentFileId = null; v.panX = v.panY = 0; v.zoom = 1;
+  if (opts.restore) restoreState(opts.restore);
+  syncCanvas(); cache = null; rawPreview = false;
+  if (!opts.restore) { tabId = 'pattern'; selIdx.pattern = 0; builtTab = null; }
+  closeLibrary(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden');
+  drawAll(); schedule(); showUI(); saveSessionSoon();
+}
+$('emptyCanvas').onclick = () => newCanvas();
+$('vcanvas').innerHTML = IC.newcanvas;
+$('vcanvas').onclick = () => newCanvas();
 $('file').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
 $('emptyUpload').onclick = () => $('file').click();
 addEventListener('dragover', e => e.preventDefault());
@@ -1665,7 +1925,7 @@ function drawLibrary() {
   segment($('libSeg'), [['downloads', 'Patterns'], ['presets', 'Styles'], ['files', 'Photos']], lib.tab, t => { if (t === lib.tab) return; lib.tab = t; drawLibrary(); });
   renderLibList().then(() => anim($('libList'), [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260 }));
 }
-const MODE_MARK = { none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', glass: '▥', weave: '≋' };
+const MODE_MARK = { blobs: '⬤', diffuse: '◍', none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', glass: '▥', weave: '≋' };
 const modeName = m => (MODE_ITEM.opts.find(o => o[0] === m) || [, m])[1];
 // A tile is just the picture at its natural shape (masonry); tapping opens it large with its actions
 function galTile(media, label, onOpen, onHold) {
@@ -1890,7 +2150,8 @@ layout();
 // Reopen the last session (photo + settings) if there is one
 try {
   const st = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-  if (st && st.fileId != null) getFile(st.fileId).then(rec => { if (rec && !img) loadFile(new File([rec.blob], rec.name, { type: rec.type }), { skipStore: true, fileId: rec.id, restore: st }); }).catch(() => {});
+  if (st && st.canvas) newCanvas({ restore: st });
+  else if (st && st.fileId != null) getFile(st.fileId).then(rec => { if (rec && !img) loadFile(new File([rec.blob], rec.name, { type: rec.type }), { skipStore: true, fileId: rec.id, restore: st }); }).catch(() => {});
 } catch { /* unreadable session: start fresh */ }
 // Boot splash: a short pause, the eight threads draw in once (last one done at ~1.6s), hold a beat, then fade away
 // …and once it's clear, the start screen's pieces fade up in turn
