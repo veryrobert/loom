@@ -33,7 +33,7 @@ const v = {
   // (×0.7) and Dither mode dots (×0.2); density zones vary it across the image
   mode: 'none', scale: 10, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
   mdir: 'h', mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30,
-  blstyle: 'blobs', blgrid: 'diag', blsize: 0.9, blneck: 0.6, bllinks: 0.65, blthresh: 0.4, blrand: 0.25, blcol: 'mono',
+  blstyle: 'blobs', blgrid: 'diag', blsize: 0.9, blneck: 0.6, bllinks: 0.65, blthresh: 0.4, blrand: 0.25, blcol: 'mono', blseed: 0,
   dfblend: 'shadow', dfbleed: 0.5, dfshadow: 0.6, dfspeck: 0.55, dfsize: 1, dfpal: true,
   // Blank canvas: the generated base (soft colour blobs / gradient / plain)
   cbase: 'blobs',
@@ -698,7 +698,7 @@ const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 // lightest; Palette colours each dot from the image ----------
 function renderBlobs(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['blobs', adjKey(), W, H, v.zoom, v.panX, v.panY, palette, v.scale, v.blstyle, v.blgrid, v.blsize, v.blneck, v.bllinks, v.blthresh, v.blrand, v.blcol, v.invert, v.grain, v.dither, seed, imgId]);
+  const pkey = JSON.stringify(['blobs', adjKey(), W, H, v.zoom, v.panX, v.panY, palette, v.scale, v.blstyle, v.blgrid, v.blsize, v.blneck, v.bllinks, v.blthresh, v.blrand, v.blcol, v.blseed, v.invert, v.grain, v.dither, seed, imgId]);
   let base;
   if (live && cache && cache.pkey === pkey) base = cache.O;
   else {
@@ -713,7 +713,7 @@ function renderBlobs(W, H, g, u, live) {
     const q0 = diag ? -W * R2 - c : -c, p0 = -c, p1 = diag ? (W + H) * R2 + c : W + c, q1 = diag ? H * R2 + c : H + c;
     const ni = Math.ceil((p1 - p0) / c) + 2, nj = Math.ceil((q1 - q0) / c) + 2;
     const on = new Uint8Array(ni * nj), col = new Int16Array(ni * nj), lr = new Uint8Array(ni * nj), ld = new Uint8Array(ni * nj);
-    const sd = seed * 13 + 1;
+    const sd = seed * 13 + 1 + v.blseed * 7919; // blseed: Blobs' own shuffle, which leaves a canvas's base alone
     for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
       const p = p0 + i * c, q = q0 + j * c, x = diag ? (p - q) * R2 : p, y = diag ? (p + q) * R2 : q;
       if (x < -c || y < -c || x > W + c || y > H + c) continue;
@@ -1164,6 +1164,7 @@ const IC = {
   bleed: I("<circle cx=\"12\" cy=\"12\" r=\"3\" />  <circle cx=\"12\" cy=\"12\" r=\"6.5\" stroke-dasharray=\"1.5 2.5\" />  <circle cx=\"12\" cy=\"12\" r=\"10\" stroke-dasharray=\"1 4\" />"),
   newcanvas: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M12 8v8\" />  <path d=\"M8 12h8\" />"),
   clear: I("<path d=\"m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21\" />  <path d=\"M22 21H7\" />  <path d=\"m5 11 9 9\" />"),
+  reroll: I("<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\" />  <path d=\"M21 3v5h-5\" />  <path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\" />  <path d=\"M8 16H3v5\" />"),
   library: I("<path d=\"m16 6 4 14\" />  <path d=\"M12 6v14\" />  <path d=\"M8 8v12\" />  <path d=\"M4 4v16\" />"),
 };
 $('vlib').innerHTML = IC.library;
@@ -1241,7 +1242,8 @@ const BLOBS_ITEMS = [MODE_ITEM,
     C_('blstyle', 'Style', IC.shapes, [['blobs', 'Blobs', IC.link], ['molecule', 'Molecules', IC.network]]),
     C_('blgrid', 'Grid', IC.grid, [['diag', 'Diagonal', IC.diag], ['square', 'Square', IC.cell]]),
     S_('blsize', 'Dot size', IC.dot, 0.3, 1, 0.01), S_('blneck', 'Bridge', IC.width, 0, 1, 0.01),
-    S_('bllinks', 'Links', IC.merge, 0, 1, 0.01), S_('blthresh', 'Threshold', IC.contrast, 0, 1, 0.01), S_('blrand', 'Random', IC.dice, 0, 1, 0.01)];
+    S_('bllinks', 'Links', IC.merge, 0, 1, 0.01), S_('blthresh', 'Threshold', IC.contrast, 0, 1, 0.01), S_('blrand', 'Random', IC.dice, 0, 1, 0.01),
+    A_('Shuffle dots', IC.reroll, () => { v.blseed = Math.floor(Math.random() * 1e6); })];
 const DIFFUSE_ITEMS = [MODE_ITEM,
     C_('dfblend', 'Blend', IC.blend, [['shadow', 'Shadow'], ['soft', 'Soft'], ['glow', 'Glow'], ['difference', 'Difference']]),
     S_('dfbleed', 'Bleed', IC.bleed, 0, 1, 0.01),
