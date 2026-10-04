@@ -776,6 +776,8 @@ const IC = {
   split: I("<path d=\"M12 2v20\" />  <path d=\"M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3\" />  <path d=\"M8 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3\" />"),
   side: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M9 3v18\" />"),
   zoom: I("<circle cx=\"11\" cy=\"11\" r=\"8\" />  <line x1=\"21\" x2=\"16.65\" y1=\"21\" y2=\"16.65\" />  <line x1=\"11\" x2=\"11\" y1=\"8\" y2=\"14\" />  <line x1=\"8\" x2=\"14\" y1=\"11\" y2=\"11\" />"),
+  original: I("<path d=\"M9 14 4 9l5-5\" />  <path d=\"M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11\" />"),
+  fullscreen: I("<path d=\"M8 3H5a2 2 0 0 0-2 2v3\" />  <path d=\"M21 8V5a2 2 0 0 0-2-2h-3\" />  <path d=\"M3 16v3a2 2 0 0 0 2 2h3\" />  <path d=\"M16 21h3a2 2 0 0 0 2-2v-3\" />"),
   reset: I("<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" />  <path d=\"M3 3v5h5\" />"),
   compare: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M12 3v18\" />"),
   shapes: I("<path d=\"M8.3 10a.7.7 0 0 1-.626-1.079L11.4 3a.7.7 0 0 1 1.198-.043L16.3 8.9a.7.7 0 0 1-.572 1.1Z\" />  <rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\" />  <circle cx=\"17.5\" cy=\"17.5\" r=\"3.5\" />"),
@@ -808,7 +810,8 @@ const S_ = (key, label, icon, min, max, step, onSet) => ({ t: 's', key, label, i
 const T_ = (key, label, icon) => ({ t: 't', key, label, icon });
 const C_ = (key, label, icon, opts) => ({ t: 'c', key, label, icon, opts });
 const A_ = (label, icon, fn) => ({ t: 'a', label, icon, fn });
-const FORMATS = [['image', 'Original'], ['screen', 'Full screen'], ['1', 'Square'], ['0.8', '4:5'], ['0.75', '3:4'], ['0.6667', '2:3'], ['0.5625', '9:16'], ['1.7778', '16:9'], ['1.3333', '4:3'], ['1.5', '3:2'], ['0.7071', 'A4'], ['1.4142', 'A4 wide']];
+// A third entry is an icon shown in place of the name (the name stays as its accessible label)
+const FORMATS = [['image', 'Original', IC.original], ['screen', 'Full screen', IC.fullscreen], ['1', '1:1'], ['0.8', '4:5'], ['0.75', '3:4'], ['0.6667', '2:3'], ['0.5625', '9:16'], ['1.7778', '16:9'], ['1.3333', '4:3'], ['1.5', '3:2'], ['0.7071', 'A4'], ['1.4142', 'A4 wide']];
 // Switch to hide Martens from the Mode picker without removing it
 const MARTENS_ON = true;
 const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : [])]), { onPick: () => {
@@ -1055,8 +1058,9 @@ function drawControl() {
   if (it.t === 's') { scrub.classList.remove('hidden'); placeStrip(); }
   else if (it.t === 'c') {
     chips.classList.remove('hidden'); chips.innerHTML = '';
-    it.opts.forEach(([val, name]) => {
-      const b = document.createElement('button'); b.className = 'chip'; b.textContent = name; b.setAttribute('aria-pressed', String(v[it.key]) === String(val));
+    it.opts.forEach(([val, name, icon]) => {
+      const b = document.createElement('button'); b.className = 'chip'; b.setAttribute('aria-pressed', String(v[it.key]) === String(val));
+      if (icon) { b.innerHTML = icon; b.classList.add('chip-icon'); b.setAttribute('aria-label', name); b.title = name; } else b.textContent = name;
       b.onclick = () => { v[it.key] = val; if (it.onPick) { it.onPick(); drawAll(); } else if (!refreshVisibility(it)) { paintItems(); drawControl(); } schedule(); }; chips.append(b);
     });
   }
