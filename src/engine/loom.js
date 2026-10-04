@@ -819,7 +819,7 @@ function primeMode() {
   if (v.mode === 'weave' && !weavePrimed) { weavePrimed = true; if (untouched) { v.con = 1.15; v.sat = 1.25; } }
   if (v.mode === 'glyph' && !glyphModePrimed) { glyphModePrimed = true; palette = ['#ffffff', '#111111']; paletteSrc = palette.slice(); paletteAuto = false; }
   if (v.mode === 'martens' && !martensPrimed) { martensPrimed = true; palette = ['#111111', '#f2f2f2']; paletteSrc = palette.slice(); paletteAuto = false; }
-  if (v.mode === 'dither' && !ditherPrimed) { ditherPrimed = true; palette = ['#000000', HOT[Math.floor(Math.random() * HOT.length)]]; paletteSrc = palette.slice(); paletteAuto = false; }
+  if (v.mode === 'dither' && !ditherPrimed) { ditherPrimed = true; palette = ['#000000', '#ffffff']; paletteSrc = palette.slice(); paletteAuto = false; }
 }
 primeMode();
 // Controls can declare when they apply; hidden ones keep their values
