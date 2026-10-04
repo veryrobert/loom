@@ -107,4 +107,5 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 .lib-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(84px, 1fr)); gap:6px}
 .lib-cell{position:relative; aspect-ratio:1; border-radius:12px; overflow:hidden; background:rgba(255,255,255,.08); cursor:pointer}
 .lib-cell-del{position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; font-size:14px; line-height:1; display:grid; place-items:center}
+.lib-rename{flex:1; min-width:0; height:30px; border-radius:8px; padding:0 8px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#fff; font:inherit; font-size:14px}
 .lib-empty{color:rgba(255,255,255,.45); font-size:13px; text-align:center; padding:24px 0}

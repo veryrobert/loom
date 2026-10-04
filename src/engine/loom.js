@@ -4,7 +4,7 @@
    Everything runs in the browser. Ported from the original single-file artifact into a
    Vite module; the graphics/control logic below is otherwise unchanged. */
 import { storeFile, listFiles, deleteFile } from '../storage/files';
-import { savePreset, listPresets, deletePreset } from '../storage/presets';
+import { savePreset, listPresets, deletePreset, renamePreset } from '../storage/presets';
 import { saveToDevice, listDownloads, deleteDownload, redownload } from '../storage/downloads';
 
 export function initLoom() {
@@ -734,7 +734,7 @@ const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['shapes', 'Shape
   builtTab = null; selIdx.pattern = 0; selIdx.colour = 0;
   primeMode();
 } });
-let shapesPrimed = false, ditherPrimed = false, glyphPrimed = false, glyphModePrimed = false, martensPrimed = false;
+let shapesPrimed = false, ditherPrimed = false, glyphModePrimed = false, martensPrimed = false;
 // First-visit setup for a mode — run on picking it, and for the default mode at start and after a reset
 function primeMode() {
   if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; v.sat = 1.1; v.con = 1.05; if (img) extractPalette(); }
@@ -756,12 +756,7 @@ const WEAVE_ITEMS = [MODE_ITEM,
     A_('Shuffle', IC.shuffle, () => { seed = Math.floor(Math.random() * 1e6); }),
     S_('pitch', 'Stripe width', IC.width, 3, 48, 1), S_('depth', 'Stripe depth', IC.depth, 0, 1, 0.01), T_('offset', 'Offset stripes', IC.offset),
     S_('noise', 'Noise', IC.noise, 0, 80, 1), S_('accents', 'Tick rules', IC.ruler, 0, 12, 1), ...DENSITY_ITEMS];
-const SSET_ITEM = Object.assign(C_('sset', 'Shapes', IC.shapes, [['mixed', 'Mixed'], ['glyph', 'Glyph mix'], ['dot', 'Dots'], ['square', 'Squares'], ['diamond', 'Diamonds'], ['hline', 'Lines'], ['vbar', 'Bars'], ['cross', 'Crosses'], ['triangle', 'Triangles'], ['arrow', 'Arrows'], ['ring', 'Rings'], ['x', 'Diagonal cross']]), { onPick: () => {
-  if (v.sset === 'glyph' && !glyphPrimed) {
-    glyphPrimed = true; v.cell = 9; v.ssize = 0.55; v.halftone = 0.55; v.jitter = 0.45; v.stone = 'mono'; v.ground = 'lightest';
-    palette = ['#ffffff', '#111111']; paletteSrc = palette.slice(); paletteAuto = false;
-  }
-} });
+const SSET_ITEM = Object.assign(C_('sset', 'Shapes', IC.shapes, [['mixed', 'Mixed'], ['dot', 'Dots'], ['square', 'Squares'], ['diamond', 'Diamonds'], ['hline', 'Lines'], ['vbar', 'Bars'], ['cross', 'Crosses'], ['triangle', 'Triangles'], ['arrow', 'Arrows'], ['ring', 'Rings'], ['x', 'Diagonal cross']]));
 const SHAPE_ITEMS = [MODE_ITEM, SSET_ITEM,
     S_('cell', 'Cell size', IC.cell, 3, 40, 1), S_('ssize', 'Shape size', IC.dot, 0.2, 1.3, 0.01), S_('halftone', 'Halftone', IC.halftone, 0, 1, 0.01),
     C_('sby', 'Shape by', IC.bands, [['tone', 'Tone'], ['rows', 'Rows']]), when(S_('bandRows', 'Band height', IC.rows, 1, 24, 1), () => v.sby === 'rows'),
@@ -806,7 +801,7 @@ function randomPalette() {
 }
 function randomShapes() {
   const pick = a => a[Math.floor(Math.random() * a.length)];
-  v.sset = pick(['mixed', 'mixed', 'glyph', 'dot', 'square', 'diamond', 'hline', 'vbar', 'cross', 'triangle', 'arrow', 'ring', 'x']);
+  v.sset = pick(['mixed', 'mixed', 'dot', 'square', 'diamond', 'hline', 'vbar', 'cross', 'triangle', 'arrow', 'ring', 'x']);
   v.cell = 6 + Math.floor(Math.random() * 18);
   v.ssize = +(0.5 + Math.random() * 0.6).toFixed(2);
   v.halftone = +(Math.random() * 0.8).toFixed(2);
@@ -1149,7 +1144,7 @@ let resetArm = 0;
 $('vreset').onclick = () => {
   if (Date.now() - resetArm > 2500) { resetArm = Date.now(); flash('Tap again to reset all settings'); return; }
   resetArm = 0;
-  Object.assign(v, D0); seed = 7; shapesPrimed = false; ditherPrimed = false; glyphPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
+  Object.assign(v, D0); seed = 7; shapesPrimed = false; ditherPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
   Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null;
   if (img) extractPalette();
   drawAll(); schedule(); flash('Settings reset');
@@ -1361,13 +1356,29 @@ async function renderLibList() {
     const items = await listPresets();
     box.innerHTML = '';
     if (!items.length) { box.innerHTML = '<p class="lib-empty">No saved presets yet</p>'; return; }
-    items.forEach(p => box.append(libRow(
-      p.mode === 'shapes' ? '◆' : p.mode === 'glyph' ? '✦' : p.mode === 'dither' ? '▦' : p.mode === 'martens' ? '▨' : '≋',
-      p.name,
-      new Date(p.createdAt).toLocaleDateString() + ' · ' + p.mode,
-      () => applyPreset(p),
-      () => deletePreset(p.id),
-    )));
+    items.forEach(p => {
+      const row = libRow(
+        p.mode === 'shapes' ? '◆' : p.mode === 'glyph' ? '✦' : p.mode === 'dither' ? '▦' : p.mode === 'martens' ? '▨' : '≋',
+        p.name,
+        new Date(p.createdAt).toLocaleDateString() + ' · ' + p.mode,
+        () => applyPreset(p),
+        () => deletePreset(p.id),
+      );
+      // Rename in place: ✎ swaps the name for a text field; Enter or leaving the field saves it
+      const ed = document.createElement('button'); ed.className = 'lib-del'; ed.setAttribute('aria-label', 'Rename'); ed.textContent = '✎';
+      ed.onclick = e => {
+        e.stopPropagation();
+        const nameEl = row.querySelector('.lib-name'), inp = document.createElement('input');
+        inp.className = 'lib-rename'; inp.value = p.name; inp.maxLength = 40; nameEl.replaceWith(inp); inp.focus(); inp.select();
+        inp.onclick = ev => ev.stopPropagation();
+        let done = false;
+        const commit = async () => { if (done) return; done = true; const n = inp.value.trim(); if (n && n !== p.name) await renamePreset(p.id, n); renderLibList(); };
+        inp.onkeydown = ev => { if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') { done = true; renderLibList(); } };
+        inp.onblur = commit;
+      };
+      row.insertBefore(ed, row.lastChild);
+      box.append(row);
+    });
   } else if (lib.tab === 'files') {
     const items = await listFiles();
     clearThumbs(box);
@@ -1400,12 +1411,15 @@ async function renderLibList() {
   }
 }
 function applyPreset(p) {
-  const { __seed, ...rest } = p.state;
+  const { __seed, __palette, __paletteSrc, ...rest } = p.state;
   Object.assign(v, rest);
   if (v.mode === 'martens' && !MARTENS_ON) v.mode = 'weave';
+  if (v.sset === 'glyph') v.sset = 'mixed'; // Shapes' old "Glyph mix" option now lives on as Glyph mode
   if (typeof __seed === 'number') seed = __seed;
   cache = null; builtTab = null;
-  if (img) extractPalette();
+  // Presets saved since 2026-10-04 carry their colours; older ones fall back to the photo's palette
+  if (Array.isArray(__palette) && __palette.length) { palette = __palette.slice(); paletteSrc = (Array.isArray(__paletteSrc) && __paletteSrc.length === __palette.length ? __paletteSrc : __palette).slice(); paletteAuto = false; }
+  else if (img) extractPalette();
   closeLibrary(); drawAll(); schedule(); flash('Preset "' + p.name + '" loaded');
 }
 // Thumbnail for a stored image/video. URLs are tracked per container and revoked when it is redrawn
@@ -1434,13 +1448,24 @@ function reopenFile(f) {
   closeLibrary();
   loadFile(file, { skipStore: true });
 }
+// A preset is the whole look: every setting, the shuffle seed and the palette
+const saveLook = name => savePreset(name, v.mode, { ...v, __seed: seed, __palette: palette.slice(), __paletteSrc: paletteSrc.slice() });
 $('libSaveBtn').onclick = async () => {
   const name = $('libSaveName').value.trim();
   if (!name) { flash('Give the preset a name'); return; }
-  await savePreset(name, v.mode, { ...v, __seed: seed });
+  await saveLook(name);
   $('libSaveName').value = '';
   flash('Preset saved');
   if (lib.tab === 'presets') renderLibList();
+};
+// One-tap save from the top bar, auto-named by mode and time; rename it later in the library
+$('vsave').onclick = async () => {
+  if (!img) return;
+  const modeName = (MODE_ITEM.opts.find(o => o[0] === v.mode) || [, 'Style'])[1];
+  const name = modeName + ' · ' + new Date().toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  await saveLook(name);
+  flash('Saved "' + name + '"');
+  refreshLibraryIfOpen();
 };
 
 layout();
