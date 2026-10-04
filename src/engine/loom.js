@@ -22,9 +22,9 @@ const v = {
   detail: 0, perstripe: true, cmode: 'palette', kcount: 7,
   bri: 1, con: 1.15, sat: 1.25, hue: 0, glow: 0, gsize: 10, blend: 'none', mix: 0.25,
   cols: 6, rows: 8, merge: 0.3, uneven: 0.35, pitch: 7, depth: 0, offset: true, noise: 0, accents: 0,
-  dither: 'off', dlevels: 5, dsize: 2, dpal: false,
+  dither: 'off', dlevels: 5, dsize: 2, dpal: false, dvary: 0,
   // Dither mode's own settings — kept apart from the Dither tab above, which is a finish for the other modes
-  ddither: 'ordered', ddlevels: 2, ddsize: 2, ddpal: true,
+  ddither: 'ordered', ddlevels: 2, ddsize: 2, ddpal: true, ddvary: 0,
   // Glyph mode = Glyph mix's look, on its own keys
   gcell: 9, gsize: 0.55, ghalf: 0.55, gjitter: 0.45, gset: 'classic', ginvert: false,
   mode: 'shapes', cell: 12, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', snoise: 0, jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
@@ -55,7 +55,7 @@ function drawSource(W, H) {
 }
 const BAYER = (() => { let b = [[0]]; for (let k = 0; k < 3; k++) { const n = b.length, nb = Array.from({ length: n * 2 }, () => new Array(n * 2)); for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const q = b[y][x] * 4; nb[y][x] = q; nb[y][x + n] = q + 2; nb[y + n][x] = q + 3; nb[y + n][x + n] = q + 1; } b = nb; } return b; })();
 // `o` picks which settings drive it: the Dither tab's finish by default, or Dither mode's own
-function dither(O, W, H, u, pal, o = { type: v.dither, levels: v.dlevels, size: v.dsize, usePal: v.dpal }) {
+function dither(O, W, H, u, pal, o = { type: v.dither, levels: v.dlevels, size: v.dsize, usePal: v.dpal, vary: v.dvary }) {
   if (o.type === 'off') return;
   const Lv = o.levels, cs = Math.max(1, Math.round(o.size * u)), usePal = o.usePal && pal.length;
   const w = Math.ceil(W / cs), h = Math.ceil(H / cs), B = new Float32Array(w * h * 3);
@@ -75,7 +75,41 @@ function dither(O, W, H, u, pal, o = { type: v.dither, levels: v.dlevels, size: 
     }
   }
   const quant = (r, g, b) => usePal ? nearest([r, g, b], ramp) : [Math.round(r / step) * step, Math.round(g / step) * step, Math.round(b / step) * step];
-  if (o.type === 'ordered') {
+  if (o.vary > 0) {
+    // Random sizes: the dot grid is cut into a random mix of squares (1–8 dots across, re-rolled by
+    // Shuffle) and each square is dithered as one dot, from the average of the dots it covers
+    const M = 8, sd = seed * 7919 + 3, leaves = [];
+    const split = (x0, y0, sz) => {
+      if (x0 >= w || y0 >= h) return;
+      if (sz > 1 && hash2(x0 * 3 + sz, y0 * 5 + sz, sd) >= o.vary * 0.8) { const hs = sz / 2; split(x0, y0, hs); split(x0 + hs, y0, hs); split(x0, y0 + hs, hs); split(x0 + hs, y0 + hs, hs); }
+      else leaves.push([x0, y0, Math.min(sz, w - x0), Math.min(sz, h - y0)]);
+    };
+    for (let by = 0; by < h; by += M) for (let bx = 0; bx < w; bx += M) split(bx, by, M);
+    leaves.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+    const amp = usePal ? 72 / Math.max(1, ramp.length - 1) : step, done = new Uint8Array(w * h);
+    for (const [x0, y0, lw, lh] of leaves) {
+      let r = 0, g = 0, b = 0;
+      for (let y = y0; y < y0 + lh; y++) for (let x = x0; x < x0 + lw; x++) { const k = (y * w + x) * 3; r += B[k]; g += B[k + 1]; b += B[k + 2]; }
+      // Clamp so error piled onto a small square next to a big one can't run away
+      const n = lw * lh, cl = c => Math.max(-64, Math.min(319, c)); r = cl(r / n); g = cl(g / n); b = cl(b / n);
+      let q;
+      if (o.type === 'ordered') {
+        // Single dots keep the Bayer pattern; bigger squares sit on aligned corners, so they get a hashed threshold
+        const t = ((lw * lh === 1 ? (BAYER[y0 & 7][x0 & 7] + 0.5) / 64 : hash2(x0, y0, sd + 1)) - 0.5) * amp;
+        q = quant(r + t, g + t, b + t);
+      } else {
+        // Diffusion between squares: error goes to the strips right of and below the square, scaled by the
+        // square's side so a neighbour of similar size receives about the usual Floyd–Steinberg share
+        q = quant(r, g, b);
+        const e = [r - q[0], g - q[1], b - q[2]];
+        const add = (x, y, f) => { if (x < 0 || x >= w || y >= h || done[y * w + x]) return; const k = (y * w + x) * 3; B[k] += e[0] * f; B[k + 1] += e[1] * f; B[k + 2] += e[2] * f; };
+        for (let y = y0; y < y0 + lh; y++) add(x0 + lw, y, 7 / 16 * lw);
+        for (let x = x0; x < x0 + lw; x++) add(x, y0 + lh, 5 / 16 * lh);
+        add(x0 - 1, y0 + lh, 3 / 16 * n); add(x0 + lw, y0 + lh, 1 / 16 * n);
+      }
+      for (let y = y0; y < y0 + lh; y++) for (let x = x0; x < x0 + lw; x++) { const k = (y * w + x) * 3; B[k] = q[0]; B[k + 1] = q[1]; B[k + 2] = q[2]; done[y * w + x] = 1; }
+    }
+  } else if (o.type === 'ordered') {
     // Palette dither keeps the same blend-to-gap ratio at every level count (72/255 is the
     // original two-colour look), so stepping Levels refines the bands rather than changing style
     const amp = usePal ? 72 / Math.max(1, ramp.length - 1) : step;
@@ -442,13 +476,13 @@ function renderShapes(W, H, g, u, live) {
 // ---------- dither mode: the whole image reduced straight to a 2(+)-colour dither ----------
 function renderDither(W, H, g, u, live) {
   drawSource(W, H);
-  const pkey = JSON.stringify(['dither', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.ddsize, v.ddpal, seed, imgId]);
+  const pkey = JSON.stringify(['dither', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.ddsize, v.ddpal, v.ddvary, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
     O = sctx.getImageData(0, 0, W, H).data.slice();
     adjustPass(O);
-    dither(O, W, H, u, palette.map(hex2rgb), { type: v.ddither, levels: v.ddlevels, size: v.ddsize, usePal: v.ddpal });
+    dither(O, W, H, u, palette.map(hex2rgb), { type: v.ddither, levels: v.ddlevels, size: v.ddsize, usePal: v.ddpal, vary: v.ddvary });
     if (live) cache = { pkey, O: O.slice() };
   }
   tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
@@ -524,7 +558,7 @@ function render(W, H, target) {
   if (v.mode === 'dither') return renderDither(W, H, g, u, live);
   if (v.mode === 'glyph') return renderGlyph(W, H, g, u, live);
   if (v.mode === 'martens') return renderMartens(W, H, g, u, live);
-  const pkey = JSON.stringify([W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.cols, v.rows, v.merge, v.uneven, v.pitch, v.depth, v.offset, v.noise, v.dither, v.dlevels, v.dsize, v.dpal, seed, imgId]);
+  const pkey = JSON.stringify([W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.cols, v.rows, v.merge, v.uneven, v.pitch, v.depth, v.offset, v.noise, v.dither, v.dlevels, v.dsize, v.dpal, v.dvary, seed, imgId]);
   let P;
   if (live && cache && cache.pkey === pkey) P = cache.P;
   else {
@@ -773,7 +807,8 @@ const GLYPH_ITEMS = [MODE_ITEM,
     A_('Shuffle', IC.shuffle, () => { seed = Math.floor(Math.random() * 1e6); })];
 const DITHER_ITEMS = [MODE_ITEM,
     Object.assign(C_('ddither', 'Dither type', IC.grid, [['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
-    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddsize', 'Dot size', IC.size, 1, 12, 1), T_('ddpal', 'Use palette', IC.palette), ...DENSITY_ITEMS];
+    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddsize', 'Dot size', IC.size, 1, 12, 1), S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('ddpal', 'Use palette', IC.palette),
+    A_('Shuffle', IC.shuffle, () => { seed = Math.floor(Math.random() * 1e6); }), ...DENSITY_ITEMS];
 const MARTENS_ITEMS = [MODE_ITEM,
     C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical'], ['d', 'Diagonal']]),
     when(S_('mangle', 'Angle', IC.ruler, 5, 85, 1), () => v.mdir === 'd'),
@@ -860,7 +895,7 @@ const TABS = [
   { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
   { id: 'dither', label: 'Dither', icon: IC.dither, items: [
     Object.assign(C_('dither', 'Dither type', IC.grid, [['off', 'Off'], ['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
-    S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), T_('dpal', 'Use palette', IC.palette)] },
+    S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), S_('dvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('dpal', 'Use palette', IC.palette)] },
   { id: 'crop', label: 'Crop', icon: IC.crop, get items() { return CROP_ITEMS(); } },
 ];
 let tabId = null; const selIdx = { adjust: 0, colour: 0, pattern: 0, dither: 0, crop: 0 };
