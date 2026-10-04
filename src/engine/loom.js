@@ -1179,13 +1179,29 @@ function drawControl() {
   title.textContent = it.noTitle ? '' : it.label;
   if (it.t === 's') { scrub.classList.remove('hidden'); placeStrip(); }
   else if (it.t === 'c') {
+    const prevLeft = chips.scrollLeft, picked = chips._picked === it.key; chips._picked = null;
     chips.classList.remove('hidden'); chips.innerHTML = '';
     it.opts.forEach(([val, name, icon]) => {
       const b = document.createElement('button'); b.className = 'chip'; b.setAttribute('aria-pressed', String(v[it.key]) === String(val));
       if (icon) { b.innerHTML = icon; b.classList.add('chip-icon'); b.setAttribute('aria-label', name); b.title = name; } else b.textContent = name;
-      b.onclick = () => { v[it.key] = val; if (it.onPick) { it.onPick(); drawAll(); } else if (!refreshVisibility(it)) { paintItems(); drawControl(); } schedule(); }; chips.append(b);
+      b.onclick = () => { v[it.key] = val; chips._picked = it.key; if (it.onPick) { it.onPick(); drawAll(); } else if (!refreshVisibility(it)) { paintItems(); drawControl(); } schedule(); }; chips.append(b);
     });
+    centerChips(chips, picked ? prevLeft : null);
   }
+}
+// A row of choices that's wider than the screen gets end spacers so any chip, the last one included,
+// can sit in the middle, and the chosen one is scrolled to the centre whenever the row is shown
+function centerChips(box, fromLeft) {
+  const chips = [...box.querySelectorAll('.chip')];
+  box.classList.remove('chips-scroll');
+  const gap = 6, total = chips.reduce((w, c) => w + c.offsetWidth, 0) + gap * (chips.length - 1);
+  if (!chips.length || total <= box.clientWidth - 32) return;
+  box.classList.add('chips-scroll');
+  const half = box.clientWidth / 2, pad = (c) => { const s = document.createElement('i'); s.className = 'chip-pad'; s.style.width = Math.max(0, half - c.offsetWidth / 2 - gap) + 'px'; return s; };
+  box.prepend(pad(chips[0])); box.append(pad(chips[chips.length - 1]));
+  const on = chips.find(c => c.getAttribute('aria-pressed') === 'true');
+  if (fromLeft != null) box.scrollLeft = fromLeft; // a tap glides from where the row was; opening the row jumps straight there
+  if (on) box.scrollTo({ left: on.offsetLeft + on.offsetWidth / 2 - half, behavior: fromLeft != null && !calm() ? 'smooth' : 'auto' });
 }
 let removing = false;
 function drawSwatches() {
