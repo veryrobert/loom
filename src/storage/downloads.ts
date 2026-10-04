@@ -5,7 +5,7 @@ import { currentAccount } from './account';
 const MAX_DOWNLOADS = 120;
 
 /** Triggers a real browser download and records a copy so it can be re-saved later. */
-export async function saveToDevice(filename: string, blob: Blob): Promise<void> {
+export async function saveToDevice(filename: string, blob: Blob, style?: DownloadRecord['style']): Promise<void> {
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement('a');
@@ -18,10 +18,10 @@ export async function saveToDevice(filename: string, blob: Blob): Promise<void> 
   } finally {
     URL.revokeObjectURL(url);
   }
-  await recordDownload(filename, blob);
+  await recordDownload(filename, blob, style);
 }
 
-export async function recordDownload(filename: string, blob: Blob): Promise<number> {
+export async function recordDownload(filename: string, blob: Blob, style?: DownloadRecord['style']): Promise<number> {
   const id = await db.downloads.add({
     filename,
     mime: blob.type,
@@ -29,6 +29,7 @@ export async function recordDownload(filename: string, blob: Blob): Promise<numb
     createdAt: Date.now(),
     blob,
     ownerId: currentAccount().id,
+    style,
   });
   const all = await db.downloads.orderBy('createdAt').reverse().toArray();
   const stale = all.slice(MAX_DOWNLOADS);

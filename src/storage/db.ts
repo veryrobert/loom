@@ -38,6 +38,8 @@ export interface DownloadRecord {
   createdAt: number;
   blob: Blob;
   ownerId?: string;
+  /** The settings that made this export (same shape as a preset's state), so its style can be copied. */
+  style?: { mode: string; state: Record<string, unknown> };
 }
 
 class LoomDB extends Dexie {

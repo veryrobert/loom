@@ -1174,7 +1174,7 @@ function loadFile(f, opts) {
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
   const im = new Image();
-  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
+  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; drawPaste(); $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
   im.src = URL.createObjectURL(f);
   if (!opts.skipStore) storeFile(f).then(refreshLibraryIfOpen).catch(() => {});
 }
@@ -1228,7 +1228,7 @@ function loadVideo(f, opts) {
   const ready = () => {
     if (started || !el.videoWidth || el.readyState < 2) return;
     const first = !img; started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
-    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
+    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; drawPaste(); $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
     toast(''); drawAll(); schedule(); showUI(); paintVbar(); frameLoop();
   };
   ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'timeupdate'].forEach(ev => el.addEventListener(ev, ready));
@@ -1295,7 +1295,7 @@ async function finishRecording() {
   const type = (rec && rec.mimeType) || 'video/webm', ext = type.includes('mp4') ? 'mp4' : 'webm';
   const blob = new Blob(chunks, { type });
   if (!blob.size) { flash('Nothing was recorded'); return; }
-  try { await saveToDevice('loom.' + ext, blob); refreshLibraryIfOpen(); }
+  try { await saveToDevice('loom.' + ext, blob, currentStyle()); refreshLibraryIfOpen(); }
   catch (err) { flash('Saving the recording failed'); }
 }
 
@@ -1348,10 +1348,10 @@ $('xgo').onclick = async () => {
     if (xs.fmt === 'png') {
       const c = document.createElement('canvas'); render(w, h, c); cache = null; layout();
       const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-      await saveToDevice(`loom-${w}x${h}.png`, blob);
+      await saveToDevice(`loom-${w}x${h}.png`, blob, currentStyle());
     } else {
       const text = vectorFile(xs.fmt, w, h);
-      await saveToDevice(`loom-${w}x${h}.${xs.fmt}`, new Blob([text], { type: xs.fmt === 'svg' ? 'image/svg+xml' : 'application/pdf' }));
+      await saveToDevice(`loom-${w}x${h}.${xs.fmt}`, new Blob([text], { type: xs.fmt === 'svg' ? 'image/svg+xml' : 'application/pdf' }), currentStyle());
     }
     closeExport();
     refreshLibraryIfOpen();
@@ -1447,7 +1447,7 @@ const lib = { tab: 'downloads' };
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function formatBytes(n) { if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'; return (n / 1048576).toFixed(1) + ' MB'; }
 function openLibrary() { document.body.classList.add('exporting'); document.body.classList.remove('menuopen'); $('library').classList.remove('hidden'); drawLibrary(); }
-function closeLibrary() { closeGalView(); document.body.classList.remove('exporting'); $('library').classList.add('hidden'); }
+function closeLibrary() { closeGalView(); document.body.classList.remove('exporting'); $('library').classList.add('hidden'); drawPaste(); }
 function refreshLibraryIfOpen() { if (!$('library').classList.contains('hidden')) renderLibList(); }
 $('vlib').onclick = openLibrary;
 $('libClose').onclick = closeLibrary;
@@ -1459,12 +1459,28 @@ function drawLibrary() {
 const MODE_MARK = { none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', weave: '≋' };
 const modeName = m => (MODE_ITEM.opts.find(o => o[0] === m) || [, m])[1];
 // A tile is just the picture at its natural shape (masonry); tapping opens it large with its actions
-function galTile(media, label, onOpen) {
+function galTile(media, label, onOpen, onHold) {
   const t = document.createElement('button'); t.className = 'gal-tile'; t.setAttribute('aria-label', label);
   if (typeof media === 'string') { const m = document.createElement('div'); m.className = 'gal-mark'; m.textContent = media; t.append(m); } else t.append(media);
-  t.onclick = onOpen;
+  // Hold (~0.45s) to copy the tile's style; a plain tap still opens it
+  let timer = 0, held = false, start = null;
+  const cancel = () => { clearTimeout(timer); timer = 0; t.classList.remove('holding'); };
+  t.addEventListener('pointerdown', e => { held = false; start = [e.clientX, e.clientY]; if (!onHold) return; t.classList.add('holding'); timer = setTimeout(() => { held = true; t.classList.remove('holding'); onHold(); if (navigator.vibrate) navigator.vibrate(12); }, 450); });
+  t.addEventListener('pointermove', e => { if (timer && start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 8) cancel(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => t.addEventListener(ev, cancel));
+  t.addEventListener('contextmenu', e => { if (onHold) e.preventDefault(); });
+  t.onclick = e => { if (held) { e.preventDefault(); held = false; return; } onOpen(); };
   return t;
 }
+// Copy / paste a style: hold a style or pattern in the gallery, then Paste style on the working image
+let copiedStyle = null;
+function copyStyle(style, name) {
+  if (!style) { flash('No style saved with this pattern'); return; }
+  copiedStyle = { ...style, name }; flash('Style copied: paste it on your image'); drawPaste();
+}
+function drawPaste() { $('paste').hidden = !(copiedStyle && img); }
+$('pasteBtn').onclick = () => { if (!copiedStyle) return; closeLibrary(); applyPreset({ name: copiedStyle.name, mode: copiedStyle.mode, state: copiedStyle.state }); flash('Style pasted'); };
+$('pasteX').onclick = () => { copiedStyle = null; drawPaste(); };
 async function renderLibList() {
   const box = $('libList');
   clearThumbs(box);
@@ -1477,10 +1493,11 @@ async function renderLibList() {
       box.append(galTile(media(), p.name, () => openGalView({
         media: media(), name: p.name, meta: modeName(p.mode) + ' · ' + new Date(p.createdAt).toLocaleDateString(),
         actions: [['Use this look', () => { closeGalView(); applyPreset(p); }, true],
+          ['Copy style', () => copyStyle({ mode: p.mode, state: p.state }, p.name)],
           ['Duplicate', async () => { await savePreset(p.name + ' copy', p.mode, p.state, p.thumb); closeGalView(); renderLibList(); flash('Duplicated'); }],
           ['Rename', () => renameInView(p.name, async n => { await renamePreset(p.id, n); p.name = n; renderLibList(); })],
           ['Delete', async () => { await deletePreset(p.id); closeGalView(); renderLibList(); }]],
-      })));
+      }), () => copyStyle({ mode: p.mode, state: p.state }, p.name)));
     });
   } else if (lib.tab === 'files') {
     const items = await listFiles();
@@ -1498,8 +1515,9 @@ async function renderLibList() {
       box.append(galTile(media(box), d.filename, () => openGalView({
         media: media($('galMedia')), name: d.filename, meta: new Date(d.createdAt).toLocaleDateString() + ' · ' + formatBytes(d.size),
         actions: [['Download', () => redownload(d.id), true],
+          ...(d.style ? [['Copy style', () => copyStyle(d.style, d.filename)]] : []),
           ['Delete', async () => { await deleteDownload(d.id); closeGalView(); renderLibList(); }]],
-      })));
+      }), () => copyStyle(d.style, d.filename)));
     });
   }
 }
@@ -1583,7 +1601,9 @@ function lookThumb() {
     render(W, H, c); return c.toDataURL('image/jpeg', 0.82);
   } catch { return undefined; }
 }
-const saveLook = name => savePreset(name, v.mode, { ...v, __seed: seed, __palette: palette.slice(), __paletteSrc: paletteSrc.slice() }, lookThumb());
+// The whole look as data: every setting, the shuffle seed and the palette (what presets, exports and copy/paste carry)
+const currentStyle = () => ({ mode: v.mode, state: { ...v, __seed: seed, __palette: palette.slice(), __paletteSrc: paletteSrc.slice() } });
+const saveLook = name => { const st = currentStyle(); return savePreset(name, st.mode, st.state, lookThumb()); };
 // One-tap save from the top bar, auto-named by mode and time; rename it later in the library
 // One Shuffle for everything: re-rolls the shared seed behind every random choice (glyph picks, Martens
 // stagger, dither square sizes, grain)
