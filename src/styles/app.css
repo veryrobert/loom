@@ -129,8 +129,9 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
    artwork is never covered; labels appear on hover ---------- */
 @media (min-width: 900px) {
   .dock{gap:10px}
-  .dock > .tabs{z-index:2; position:fixed; left:12px; top:50%; transform:translateY(-50%); flex-direction:column; padding:4px; gap:2px}
-  .tab{width:42px; height:42px; border-radius:15px}
+  .dock > .tabs{z-index:2; position:fixed; left:12px; top:50%; transform:translateY(-50%); flex-direction:column; padding:4px; gap:2px; border-radius:25px}
+  /* Circles inside a pill whose ends match them: pill radius = circle radius (21) + padding (4) */
+  .tab{width:42px; height:42px; border-radius:50%}
   .tab svg{width:20px; height:20px}
   .tab span{display:none}
   .dock > .items{z-index:1; position:fixed; left:64px; top:50%; transform:translateY(-50%); flex-direction:column; width:auto;
