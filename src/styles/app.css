@@ -162,9 +162,11 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 .gal-view-name{font-size:16px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .gal-view-meta{font-size:13px; color:rgba(255,255,255,.45); margin-top:3px}
 .gal-rename{height:34px; width:min(280px, 80vw); border-radius:17px; padding:0 14px; background:#161616; border:1px solid rgba(255,255,255,.2); color:#fff; font:inherit; font-size:15px; text-align:center}
-.gal-actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
-.gal-actions button{height:44px; padding:0 20px; border-radius:22px; background:#1c1c1c; color:#fff; font-size:15px}
-.gal-actions button.primary{background:#fff; color:#000; font-weight:500}
+.gal-actions{display:flex; gap:12px; flex-wrap:nowrap; justify-content:center}
+.gal-actions button{width:52px; height:52px; border-radius:50%; display:grid; place-items:center; background:#1c1c1c; color:#fff}
+.gal-actions button.primary{background:#fff; color:#000}
+.gal-view-media.holding img,.gal-view-media.holding video{opacity:.7; transition:opacity .45s}
+.gal-view-media{-webkit-touch-callout:none; -webkit-user-select:none; user-select:none}
 
 /* Copied style ready to paste on the working image */
 .paste{position:fixed; left:50%; transform:translateX(-50%); top:calc(env(safe-area-inset-top,0px) + 112px); z-index:7; display:flex; gap:6px}

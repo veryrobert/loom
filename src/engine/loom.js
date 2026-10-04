@@ -1463,14 +1463,25 @@ function galTile(media, label, onOpen, onHold) {
   const t = document.createElement('button'); t.className = 'gal-tile'; t.setAttribute('aria-label', label);
   if (typeof media === 'string') { const m = document.createElement('div'); m.className = 'gal-mark'; m.textContent = media; t.append(m); } else t.append(media);
   // Hold (~0.45s) to copy the tile's style; a plain tap still opens it
-  let timer = 0, held = false, start = null;
-  const cancel = () => { clearTimeout(timer); timer = 0; t.classList.remove('holding'); };
-  t.addEventListener('pointerdown', e => { held = false; start = [e.clientX, e.clientY]; if (!onHold) return; t.classList.add('holding'); timer = setTimeout(() => { held = true; t.classList.remove('holding'); onHold(); if (navigator.vibrate) navigator.vibrate(12); }, 450); });
-  t.addEventListener('pointermove', e => { if (timer && start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 8) cancel(); });
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => t.addEventListener(ev, cancel));
-  t.addEventListener('contextmenu', e => { if (onHold) e.preventDefault(); });
-  t.onclick = e => { if (held) { e.preventDefault(); held = false; return; } onOpen(); };
+  const wasHeld = holdToCopy(t, onHold);
+  t.onclick = e => { if (wasHeld()) { e.preventDefault(); return; } onOpen(); };
   return t;
+}
+// Press-and-hold gesture on el: dims while held, then calls onHold. Returns a check for "that press was a hold"
+// (consumed once) so the following click can be ignored. Elements are reused, so the latest onHold wins
+function holdToCopy(el, onHold) {
+  el._onHold = onHold;
+  if (!el._holdBound) {
+    el._holdBound = true;
+    let timer = 0, start = null;
+    const cancel = () => { clearTimeout(timer); timer = 0; el.classList.remove('holding'); };
+    el.addEventListener('pointerdown', e => { el._held = false; start = [e.clientX, e.clientY]; if (!el._onHold) return; el.classList.add('holding');
+      timer = setTimeout(() => { el._held = true; el.classList.remove('holding'); el._onHold(); if (navigator.vibrate) navigator.vibrate(12); }, 450); });
+    el.addEventListener('pointermove', e => { if (timer && start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 8) cancel(); });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => el.addEventListener(ev, cancel));
+    el.addEventListener('contextmenu', e => { if (el._onHold) e.preventDefault(); });
+  }
+  return () => { const h = el._held; el._held = false; return h; };
 }
 // Copy / paste a style: hold a style or pattern in the gallery, then Paste style on the working image
 let copiedStyle = null;
@@ -1492,11 +1503,10 @@ async function renderLibList() {
       const media = () => { if (!p.thumb) return MODE_MARK[p.mode] || '◆'; const i = document.createElement('img'); i.src = p.thumb; i.alt = ''; return i; };
       box.append(galTile(media(), p.name, () => openGalView({
         media: media(), name: p.name, meta: modeName(p.mode) + ' · ' + new Date(p.createdAt).toLocaleDateString(),
-        actions: [['Use this look', () => { closeGalView(); applyPreset(p); }, true],
-          ['Copy style', () => copyStyle({ mode: p.mode, state: p.state }, p.name)],
-          ['Duplicate', async () => { await savePreset(p.name + ' copy', p.mode, p.state, p.thumb); closeGalView(); renderLibList(); flash('Duplicated'); }],
-          ['Rename', () => renameInView(p.name, async n => { await renamePreset(p.id, n); p.name = n; renderLibList(); })],
-          ['Delete', async () => { await deletePreset(p.id); closeGalView(); renderLibList(); }]],
+        onHold: () => copyStyle({ mode: p.mode, state: p.state }, p.name),
+        actions: [['Duplicate', GIC.duplicate, async () => { await savePreset(p.name + ' copy', p.mode, p.state, p.thumb); closeGalView(); renderLibList(); flash('Duplicated'); }],
+          ['Rename', GIC.rename, () => renameInView(p.name, async n => { await renamePreset(p.id, n); p.name = n; renderLibList(); })],
+          ['Delete', GIC.trash, async () => { await deletePreset(p.id); closeGalView(); renderLibList(); }]],
       }), () => copyStyle({ mode: p.mode, state: p.state }, p.name)));
     });
   } else if (lib.tab === 'files') {
@@ -1504,8 +1514,8 @@ async function renderLibList() {
     if (!items.length) return empty('No photos or videos yet');
     items.forEach(f => box.append(galTile(thumbEl(f, box), f.name, () => openGalView({
       media: thumbEl(f, $('galMedia')), name: f.name, meta: new Date(f.createdAt).toLocaleDateString() + ' · ' + formatBytes(f.size),
-      actions: [['Open', () => { closeGalView(); reopenFile(f); }, true],
-        ['Delete', async () => { await deleteFile(f.id); closeGalView(); renderLibList(); drawRecent(); }]],
+      actions: [['Open', GIC.open, () => { closeGalView(); reopenFile(f); }, true],
+        ['Delete', GIC.trash, async () => { await deleteFile(f.id); closeGalView(); renderLibList(); drawRecent(); }]],
     }))));
   } else {
     const items = await listDownloads();
@@ -1514,22 +1524,32 @@ async function renderLibList() {
       const media = into => d.mime.startsWith('image/') || d.mime.startsWith('video/') ? thumbEl({ type: d.mime, blob: d.blob }, into) : (d.mime.includes('pdf') ? 'PDF' : '↓');
       box.append(galTile(media(box), d.filename, () => openGalView({
         media: media($('galMedia')), name: d.filename, meta: new Date(d.createdAt).toLocaleDateString() + ' · ' + formatBytes(d.size),
-        actions: [['Download', () => redownload(d.id), true],
-          ...(d.style ? [['Copy style', () => copyStyle(d.style, d.filename)]] : []),
-          ['Delete', async () => { await deleteDownload(d.id); closeGalView(); renderLibList(); }]],
+        onHold: d.style ? () => copyStyle(d.style, d.filename) : null,
+        actions: [['Download', GIC.download, () => redownload(d.id), true],
+          ['Delete', GIC.trash, async () => { await deleteDownload(d.id); closeGalView(); renderLibList(); }]],
       }), () => copyStyle(d.style, d.filename)));
     });
   }
 }
-// Large view: the picture, its name and details, and its actions (the first one is the main action)
-function openGalView({ media, name, meta, actions }) {
+// Gallery action icons (Lucide)
+const GIC = {
+  download: I('<path d="M12 15V3" />  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />  <path d="m7 10 5 5 5-5" />'),
+  trash: I('<path d="M3 6h18" />  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />'),
+  rename: I('<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />'),
+  duplicate: I('<rect width="14" height="14" x="8" y="8" rx="2" ry="2" />  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />  <path d="M15 12v6" />  <path d="M12 15h6" />'),
+  open: I('<path d="M15 3h6v6" />  <path d="M10 14 21 3" />  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />'),
+};
+// Large view: the picture, its name and details, and icon actions in one row (the first marked one is the main
+// action). Copying a style is a gesture: hold the picture, same as on the tiles
+function openGalView({ media, name, meta, actions, onHold }) {
   // galMedia is emptied (and its URLs released) on close, so don't clear here — media was made for it
   const m = $('galMedia'); m.innerHTML = '';
   if (typeof media === 'string') { const el = document.createElement('div'); el.className = 'gal-mark'; el.textContent = media; m.append(el); }
   else { if (media.tagName === 'VIDEO') { media.controls = true; media.autoplay = true; media.loop = true; } m.append(media); }
-  $('galName').textContent = name; $('galMeta').textContent = meta;
+  $('galName').textContent = name; $('galMeta').textContent = meta + (onHold ? ' · Hold to copy style' : '');
+  holdToCopy(m, onHold);
   const bar = $('galActions'); bar.innerHTML = '';
-  actions.forEach(([label, fn, primary]) => { const b = document.createElement('button'); b.textContent = label; if (primary) b.className = 'primary'; b.onclick = fn; bar.append(b); });
+  actions.forEach(([label, icon, fn, primary]) => { const b = document.createElement('button'); b.innerHTML = icon; b.setAttribute('aria-label', label); b.title = label; if (primary) b.className = 'primary'; b.onclick = fn; bar.append(b); });
   $('galView').classList.remove('hidden');
 }
 function renameInView(cur, save) {
