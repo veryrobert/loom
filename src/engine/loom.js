@@ -37,6 +37,8 @@ const v = {
   dfblend: 'shadow', dfbleed: 0.5, dfshadow: 0.6, dfspeck: 0.55, dfsize: 1, dfpal: true,
   // Blank canvas: the generated base (soft colour blobs / gradient / plain)
   cbase: 'blobs',
+  // Adjust tab: shape the pattern only (palette colours and the unmasked photo stay untouched)
+  adjPattern: false,
   gltype: 'reeded', gldir: 'v', glrefract: 0.8, glfrost: 0.15, glhigh: 0.45, glshadow: 0.4, glfringe: 0.35, glirreg: false, glsurface: 0.45, glwidth: 1,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
@@ -59,8 +61,18 @@ const ratio = () => v.format === 'screen' ? innerWidth / innerHeight : v.format 
 const invertsSource = () => v.invert && v.mode !== 'glyph' && v.mode !== 'martens' && v.mode !== 'blobs';
 function patternSource(W, H) {
   drawSource(W, H);
+  // Adjust pattern only: the plain photo beside a Mask is kept as it was, and the adjustments go into what
+  // the pattern reads (so they shape it) rather than onto its finished colours
+  if (v.adjPattern) { rawCanvas.width = W; rawCanvas.height = H; rawCtx.drawImage(src, 0, 0); }
   if (invertsSource()) { sctx.save(); sctx.globalCompositeOperation = 'difference'; sctx.fillStyle = '#fff'; sctx.fillRect(0, 0, W, H); sctx.restore(); }
+  if (v.adjPattern && adjusting()) { const d = sctx.getImageData(0, 0, W, H); adjustPass(d.data); sctx.putImageData(d, 0, 0); }
 }
+const rawCanvas = document.createElement('canvas'), rawCtx = rawCanvas.getContext('2d');
+const adjusting = () => v.bri !== 1 || v.con !== 1 || v.sat !== 1 || !!v.hue;
+// Adjustments on the finished pattern (the usual way) — skipped when they went into the source instead
+function adjustOut(O) { if (!v.adjPattern) adjustPass(O); }
+// Cache-key part: with Adjust pattern only on, the adjustments change the pattern itself
+const adjKey = () => v.adjPattern ? [v.bri, v.con, v.sat, v.hue] : 0;
 function drawSource(W, H) {
   src.width = W; src.height = H;
   const L = Math.max(W, H), iw = srcW(), ih = srcH();
@@ -220,6 +232,7 @@ function recolourPass(O) {
   }
 }
 function adjustedSource(W, H) {
+  if (v.adjPattern) { if (rawCanvas.width !== W || rawCanvas.height !== H) patternSource(W, H); return rawCanvas; }
   if (!v.photoColour) return src;
   const shifted = paletteShifted();
   if (v.split >= 1 || (!shifted && v.bri === 1 && v.con === 1 && v.sat === 1 && !v.hue)) return src;
@@ -468,7 +481,7 @@ function ditherFinish(W, H, u) {
 }
 function renderShapes(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.scale, v.ssize, v.sbarw, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.grain, v.dither, v.jitter, v.stone, v.mode, v.gset, v.invert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
+  const pkey = JSON.stringify(['shapes', adjKey(), W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.scale, v.ssize, v.sbarw, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.grain, v.dither, v.jitter, v.stone, v.mode, v.gset, v.invert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
   let base;
   if (live && cache && cache.pkey === pkey) base = cache.P;
   else {
@@ -492,7 +505,7 @@ function renderShapes(W, H, g, u, live) {
   let O;
   if (live && cache && cache.gkey === gkey) O = cache.G.slice();
   else { O = base.O.slice(); glowPass(O, W, H, u); if (live && cache) { cache.gkey = gkey; cache.G = O.slice(); } }
-  adjustPass(O);
+  adjustOut(O);
   tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
   fin.width = W; fin.height = H; fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; fctx.drawImage(tmp, 0, 0);
   ditherFinish(W, H, u);
@@ -508,7 +521,7 @@ function renderNone(W, H, g, u) {
   patternSource(W, H);
   const O = sctx.getImageData(0, 0, W, H).data;
   if (v.photoColour && paletteShifted()) recolourPass(O);
-  adjustPass(O);
+  adjustOut(O);
   glowPass(O, W, H, u);
   if (v.dither === 'off') grainPass(O);
   tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
@@ -526,13 +539,13 @@ function renderNone(W, H, g, u) {
 // an edge highlight, a soft shadow and a fine seam. Scale sets rib width ----------
 function renderGlass(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['glass', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glsurface, v.glwidth, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['glass', v.adjPattern, W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glsurface, v.glwidth, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
     const S = sctx.getImageData(0, 0, W, H).data;
     if (v.photoColour && paletteShifted()) recolourPass(S);
-    adjustPass(S);
+    adjustOut(S);
     O = glassPass(S, W, H, u);
     glowPass(O, W, H, u);
     if (v.dither === 'off') grainPass(O);
@@ -613,12 +626,12 @@ function glassPass(S, W, H, u) {
 // ---------- dither mode: the whole image reduced straight to a 2(+)-colour dither ----------
 function renderDither(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['dither', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.scale, v.ddpal, v.ddvary, v.grain, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['dither', v.adjPattern, W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.scale, v.ddpal, v.ddvary, v.grain, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
     O = sctx.getImageData(0, 0, W, H).data.slice();
-    adjustPass(O);
+    adjustOut(O);
     dither(O, W, H, u, palette.map(hex2rgb), { type: v.ddither, levels: v.ddlevels, size: v.scale * 0.2, usePal: v.ddpal, vary: v.ddvary });
     grainPass(O);
     if (live) cache = { pkey, O: O.slice() };
@@ -671,7 +684,7 @@ const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 // lightest; Palette colours each dot from the image ----------
 function renderBlobs(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['blobs', W, H, v.zoom, v.panX, v.panY, palette, v.scale, v.blstyle, v.blgrid, v.blsize, v.blneck, v.bllinks, v.blthresh, v.blrand, v.blcol, v.invert, v.grain, v.dither, seed, imgId]);
+  const pkey = JSON.stringify(['blobs', adjKey(), W, H, v.zoom, v.panX, v.panY, palette, v.scale, v.blstyle, v.blgrid, v.blsize, v.blneck, v.bllinks, v.blthresh, v.blrand, v.blcol, v.invert, v.grain, v.dither, seed, imgId]);
   let base;
   if (live && cache && cache.pkey === pkey) base = cache.O;
   else {
@@ -743,7 +756,7 @@ function renderBlobs(W, H, g, u, live) {
     base = O; if (live) cache = { pkey, O: O.slice() };
   }
   const O = base.slice();
-  glowPass(O, W, H, u); adjustPass(O);
+  glowPass(O, W, H, u); adjustOut(O);
   finishLayer(O, W, H, g, u);
 }
 
@@ -755,7 +768,7 @@ function renderBlobs(W, H, g, u, live) {
 // so edges dissolve into coloured grain instead of a smooth gradient ----------
 function renderDiffuse(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['diffuse', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.dfblend, v.dfbleed, v.dfshadow, v.dfspeck, v.dfsize, v.dfpal, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['diffuse', v.adjPattern, W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.dfblend, v.dfbleed, v.dfshadow, v.dfspeck, v.dfsize, v.dfpal, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
@@ -766,7 +779,7 @@ function renderDiffuse(W, H, g, u, live) {
     sg.drawImage(src, 0, 0, w, h);
     const D = sg.getImageData(0, 0, w, h).data;
     if (v.photoColour && paletteShifted()) recolourPass(D);
-    adjustPass(D);
+    adjustOut(D);
     const A = new Float32Array(w * h * 3); for (let i = 0, j = 0; i < D.length; i += 4, j += 3) { A[j] = D[i]; A[j + 1] = D[i + 1]; A[j + 2] = D[i + 2]; }
     boxBlur(A, w, h, Math.max(1, Math.round(rad / ds)));
     const fx = (w - 1) / Math.max(1, W - 1), fy = (h - 1) / Math.max(1, H - 1);
@@ -911,7 +924,7 @@ function render(W, H, target) {
   if (v.mode === 'dither') return renderDither(W, H, g, u, live);
   if (v.mode === 'glyph') return renderGlyph(W, H, g, u, live);
   if (v.mode === 'martens') return renderMartens(W, H, g, u, live);
-  const pkey = JSON.stringify([W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.pcw, v.prh, v.merge, v.uneven, v.scale, v.depth, v.offset, v.grain, v.dither, v.dlevels, v.dsize, v.dpal, v.dvary, v.invert, seed, imgId]);
+  const pkey = JSON.stringify([adjKey(), W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.pcw, v.prh, v.merge, v.uneven, v.scale, v.depth, v.offset, v.grain, v.dither, v.dlevels, v.dsize, v.dpal, v.dvary, v.invert, seed, imgId]);
   let P;
   if (live && cache && cache.pkey === pkey) P = cache.P;
   else {
@@ -975,7 +988,7 @@ function render(W, H, target) {
   let O;
   if (live && cache && cache.gkey === gkey) O = cache.G.slice();
   else { O = P.O.slice(); glowPass(O, RW, RH, u); if (live && cache) { cache.gkey = gkey; cache.G = O.slice(); } }
-  adjustPass(O);
+  adjustOut(O);
   const rnd = mulberry(seed * 7 + 3);
   tmp.width = RW; tmp.height = RH; tctx.putImageData(new ImageData(O, RW, RH), 0, 0);
   fin.width = RW; fin.height = RH;
@@ -1304,7 +1317,8 @@ const TABS = [
     // A blank canvas's generated base is chosen here, as it's the "photo" being adjusted
     when(C_('cbase', 'Canvas', IC.newcanvas, [['blobs', 'Soft colour'], ['gradient', 'Gradient'], ['plain', 'Plain']]), () => isCanvas()),
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
-    S_('sat', 'Saturation', IC.drop, 0, 2, 0.01), S_('hue', 'Hue', IC.hue, -180, 180, 1)] },
+    S_('sat', 'Saturation', IC.drop, 0, 2, 0.01), S_('hue', 'Hue', IC.hue, -180, 180, 1),
+    T_('adjPattern', 'Adjust pattern only', IC.shapes)] },
   { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'glass' || v.mode === 'diffuse' ? COLOUR_COMMON : v.mode === 'blobs' ? COLOUR_BLOBS : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
   { id: 'texture', label: 'Texture', icon: IC.texture, items: [
     S_('grain', 'Grain', IC.noise, 0, 80, 1),
@@ -1813,7 +1827,7 @@ $('xgo').onclick = async () => {
 };
 
 // Vector writers. Shapes are grouped by colour; density zones become clip regions.
-function adjHex(hex) { const c = hex2rgb(hex), O = new Uint8ClampedArray([c[0], c[1], c[2], 255]); adjustPass(O); return rgb2hex([O[0], O[1], O[2]]); }
+function adjHex(hex) { if (v.adjPattern) return hex; const c = hex2rgb(hex), O = new Uint8ClampedArray([c[0], c[1], c[2], 255]); adjustPass(O); return rgb2hex([O[0], O[1], O[2]]); }
 function vectorLayers(W, H) {
   patternSource(W, H);
   const S = sctx.getImageData(0, 0, W, H).data, u = Math.max(W, H) / 850;
