@@ -1174,7 +1174,7 @@ function loadFile(f, opts) {
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
   const im = new Image();
-  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; drawPaste(); $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
+  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
   im.src = URL.createObjectURL(f);
   if (!opts.skipStore) storeFile(f).then(refreshLibraryIfOpen).catch(() => {});
 }
@@ -1185,6 +1185,27 @@ addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.file
 
 // ---------- gestures on artboard ----------
 const pts = new Map(); let pinch0 = null, moved = false;
+// Hold the artwork for the usual copy/paste bubble (Copy style · Paste style). A hold isn't a tap, so it
+// doesn't toggle the controls
+let coTimer = 0, coStart = null, coHeld = false;
+function showCallout(x, y) {
+  const c = $('callout'); $('coPaste').hidden = !copiedStyle; c.hidden = false;
+  const w = c.offsetWidth, h = c.offsetHeight;
+  c.style.left = Math.min(innerWidth - w - 8, Math.max(8, x - w / 2)) + 'px'; c.style.top = Math.max(8, y - h - 18) + 'px';
+}
+const hideCallout = () => { $('callout').hidden = true; };
+$('coCopy').onclick = () => { hideCallout(); copyStyle(currentStyle(), 'Copied look'); };
+$('coPaste').onclick = () => { hideCallout(); pasteStyle(); };
+addEventListener('pointerdown', e => { if (!e.target.closest('#callout')) hideCallout(); }, true);
+out.addEventListener('pointerdown', e => {
+  coHeld = false; clearTimeout(coTimer);
+  if (!img || picking || pts.size) return;
+  coStart = [e.clientX, e.clientY];
+  coTimer = setTimeout(() => { coHeld = true; showCallout(coStart[0], coStart[1]); if (navigator.vibrate) navigator.vibrate(12); }, 500);
+});
+out.addEventListener('pointermove', e => { if (coTimer && coStart && Math.hypot(e.clientX - coStart[0], e.clientY - coStart[1]) > 8) { clearTimeout(coTimer); coTimer = 0; } });
+['pointerup', 'pointercancel'].forEach(ev => out.addEventListener(ev, () => { clearTimeout(coTimer); coTimer = 0; }));
+out.addEventListener('contextmenu', e => e.preventDefault());
 out.addEventListener('pointerdown', e => {
   if (!img) return; out.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); moved = false; if (!picking && !maskMode()) interactive = true;
   if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), z: v.zoom, m: v.mscale }; }
@@ -1200,7 +1221,7 @@ out.addEventListener('pointermove', e => {
   schedule();
 });
 out.addEventListener('pointerup', e => {
-  if (!moved && pts.size === 1) {
+  if (!moved && pts.size === 1 && !coHeld) {
     if (picking) {
       const r = out.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * src.width, y = (e.clientY - r.top) / r.height * src.height;
       const d = sctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
@@ -1228,7 +1249,7 @@ function loadVideo(f, opts) {
   const ready = () => {
     if (started || !el.videoWidth || el.readyState < 2) return;
     const first = !img; started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
-    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; drawPaste(); $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
+    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; $('empty').hidden = true; $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
     toast(''); drawAll(); schedule(); showUI(); paintVbar(); frameLoop();
   };
   ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'timeupdate'].forEach(ev => el.addEventListener(ev, ready));
@@ -1447,7 +1468,7 @@ const lib = { tab: 'downloads' };
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function formatBytes(n) { if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'; return (n / 1048576).toFixed(1) + ' MB'; }
 function openLibrary() { document.body.classList.add('exporting'); document.body.classList.remove('menuopen'); $('library').classList.remove('hidden'); drawLibrary(); }
-function closeLibrary() { closeGalView(); document.body.classList.remove('exporting'); $('library').classList.add('hidden'); drawPaste(); }
+function closeLibrary() { closeGalView(); document.body.classList.remove('exporting'); $('library').classList.add('hidden'); }
 function refreshLibraryIfOpen() { if (!$('library').classList.contains('hidden')) renderLibList(); }
 $('vlib').onclick = openLibrary;
 $('libClose').onclick = closeLibrary;
@@ -1483,15 +1504,25 @@ function holdToCopy(el, onHold) {
   }
   return () => { const h = el._held; el._held = false; return h; };
 }
-// Copy / paste a style: hold a style or pattern in the gallery, then Paste style on the working image
+// Copy / paste a style: hold a style or pattern in the gallery (or the artwork) to copy; hold the artwork to paste
 let copiedStyle = null;
 function copyStyle(style, name) {
   if (!style) { flash('No style saved with this pattern'); return; }
-  copiedStyle = { ...style, name }; flash('Style copied: paste it on your image'); drawPaste();
+  copiedStyle = { ...style, name }; flash('Style copied: hold your image to paste');
 }
-function drawPaste() { $('paste').hidden = !(copiedStyle && img); }
-$('pasteBtn').onclick = () => { if (!copiedStyle) return; closeLibrary(); applyPreset({ name: copiedStyle.name, mode: copiedStyle.mode, state: copiedStyle.state }); flash('Style pasted'); };
-$('pasteX').onclick = () => { copiedStyle = null; drawPaste(); };
+function pasteStyle() {
+  if (!copiedStyle || !img) return;
+  applyPreset({ name: copiedStyle.name, mode: copiedStyle.mode, state: copiedStyle.state }); flash('Style pasted');
+}
+// Desktop: ⌘/Ctrl+C and ⌘/Ctrl+V copy and paste styles, unless you're typing or have text selected
+addEventListener('keydown', e => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || !img) return;
+  const t = e.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (String(getSelection() || '').length) return;
+  const k = e.key.toLowerCase();
+  if (k === 'c') { e.preventDefault(); copyStyle(currentStyle(), 'Copied look'); }
+  else if (k === 'v' && copiedStyle) { e.preventDefault(); pasteStyle(); }
+});
 async function renderLibList() {
   const box = $('libList');
   clearThumbs(box);
