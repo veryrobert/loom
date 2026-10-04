@@ -932,8 +932,6 @@ const CROP_REST = [
 function CROP_ITEMS() { return [CROP_REST[0], ...SPLIT_ITEMS(), ...CROP_REST.slice(1)]; }
 const TABS = [
   { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
-  // Scale: one size for every pattern, plus Density zones that vary it across the image (hidden for None)
-  { id: 'scale', label: 'Scale', icon: IC.cell, items: [SCALE_ITEM, ...DENSITY_ITEMS] },
   // Adjust: the photo itself. Texture: what's laid over the result (grain, glow, blend, dither finish)
   { id: 'adjust', label: 'Adjust', icon: IC.adjust, items: [
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
@@ -948,6 +946,8 @@ const TABS = [
     when(C_('dither', 'Dither', IC.dither, [['off', 'Off'], ['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), () => v.mode !== 'dither'),
     ...[S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), S_('dvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('dpal', 'Use palette', IC.palette)]
       .map(it => when(it, () => v.mode !== 'dither' && v.dither !== 'off'))] },
+  // Scale: one size for every pattern, plus Density zones that vary it across the image (hidden for None)
+  { id: 'scale', label: 'Scale', icon: IC.cell, items: [SCALE_ITEM, ...DENSITY_ITEMS] },
   { id: 'crop', label: 'Crop', icon: IC.crop, get items() { return CROP_ITEMS(); } },
 ];
 let tabId = null; const selIdx = { adjust: 0, colour: 0, pattern: 0, scale: 0, texture: 0, crop: 0 };
