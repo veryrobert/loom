@@ -934,9 +934,9 @@ const TABS = [
   { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
   { id: 'texture', label: 'Texture', icon: IC.noise, items: [
     S_('grain', 'Grain', IC.noise, 0, 80, 1),
-    S_('glow', 'Glow', IC.glow, 0, 2, 0.01), S_('gsize', 'Glow size', IC.radius, 2, 60, 1),
+    S_('glow', 'Glow', IC.glow, 0, 2, 0.01), when(S_('gsize', 'Glow size', IC.radius, 2, 60, 1), () => v.glow > 0),
     C_('blend', 'Blend', IC.blend, [['none', 'Off'], ['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['hard-light', 'Hard light'], ['color', 'Colour'], ['luminosity', 'Luminosity'], ['difference', 'Difference']]),
-    S_('mix', 'Blend amount', IC.mix, 0, 1, 0.01),
+    when(S_('mix', 'Blend amount', IC.mix, 0, 1, 0.01), () => v.blend !== 'none'),
     // Dither finish — hidden in Dither mode, which has its own; its settings show once a type is picked
     when(C_('dither', 'Dither', IC.dither, [['off', 'Off'], ['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), () => v.mode !== 'dither'),
     ...[S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), S_('dvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('dpal', 'Use palette', IC.palette)]
@@ -1118,7 +1118,7 @@ function placeStrip() { const it = curItem(); if (!it || it.t !== 's') return; c
   });
   const stop = () => { start = null; interactive = false; paintItems(); schedule(); };
   sc.addEventListener('pointerup', stop); sc.addEventListener('pointercancel', stop);
-  sc.addEventListener('wheel', e => { e.preventDefault(); const it = curItem(); if (it.t !== 's') return; const n = Math.max(0, Math.min(1, norm(it) + e.deltaX / SW + e.deltaY / SW)); v[it.key] = +(Math.round((it.min + n * (it.max - it.min)) / it.step) * it.step).toFixed(4); it.onSet && it.onSet(); drawControl(); updateSelNum(); schedule(); }, { passive: false });
+  sc.addEventListener('wheel', e => { e.preventDefault(); const it = curItem(); if (it.t !== 's') return; const n = Math.max(0, Math.min(1, norm(it) + e.deltaX / SW + e.deltaY / SW)); v[it.key] = +(Math.round((it.min + n * (it.max - it.min)) / it.step) * it.step).toFixed(4); it.onSet && it.onSet(); if (!refreshVisibility(it)) drawControl(); updateSelNum(); schedule(); }, { passive: false });
 })();
 function updateSelNum() { const it = curItem(), b = $('items').children[selIdx[tabId]]; const n = b && b.querySelector('.num'); if (n) n.textContent = it.step < 1 ? Math.round(norm(it) * 100) : v[it.key]; }
 
