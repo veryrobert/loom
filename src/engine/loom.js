@@ -826,7 +826,7 @@ const FORMATS = [['image', 'Original', IC.original], ['screen', 'Full screen', I
 // Switch to hide Martens from the Mode picker without removing it
 const MARTENS_ON = true;
 const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : [])]), { onPick: () => {
-  builtTab = null; selIdx.pattern = 0; selIdx.colour = 0;
+  builtTab = null; selIdx.pattern = 0; selIdx.colour = 0; settleArt();
   primeMode();
 } });
 let shapesPrimed = false, weavePrimed = false, ditherPrimed = false, glyphModePrimed = false, martensPrimed = false;
@@ -993,6 +993,7 @@ function drawTabs() {
       if (t.id === 'pattern' && tabId === 'pattern' && selIdx.pattern !== 0) selIdx.pattern = 0;
       else { tabId = tabId === t.id ? null : t.id; if (tabId === 'pattern') selIdx.pattern = 0; }
       if (tabId) { rawPreview = false; cache = null; } builtTab = null; drawAll(); schedule();
+      if (tabId) [...$('items').children].forEach((el, i) => anim(el, [{ opacity: 0, transform: 'scale(.85)' }, { opacity: 1, transform: 'none' }], { duration: 260, delay: i * 22, fill: 'backwards' }));
     }; nav.append(b);
   });
 }
@@ -1462,20 +1463,38 @@ function vectorFile(fmt, W, H) {
   return pdf;
 }
 
+// ---------- motion: short, eased, and off when the system asks for reduced motion ----------
+const EASE = 'cubic-bezier(.2,.8,.2,1)';
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+function anim(el, frames, opts) { return !el || calm() ? null : el.animate(frames, { duration: 280, easing: EASE, ...opts }); }
+// Hide an element after its exit animation (or straight away with reduced motion)
+// A timer backs up the animation's finish, because browsers freeze animations in background tabs
+function hideAfter(el, frames, opts, hide) {
+  const a = anim(el, frames, { fill: 'forwards', ...opts }); if (!a) return hide();
+  let done = false; const end = () => { if (done) return; done = true; hide(); a.cancel(); };
+  a.onfinish = end; setTimeout(end, (opts && opts.duration || 280) + 120);
+}
+// A soft crossfade on the artwork when the look changes wholesale (paste, load a style, switch pattern)
+function settleArt() { anim(out, [{ opacity: .35, transform: 'scale(.992)' }, { opacity: 1, transform: 'none' }], { duration: 420 }); }
+
 // ---------- gallery: a full-screen masonry grid — Patterns (your exports), Styles (saved
 // looks) and Photos (uploaded sources). Replaces the old Library sheet; still opened from the Library button ----------
 const lib = { tab: 'downloads' };
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function formatBytes(n) { if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'; return (n / 1048576).toFixed(1) + ' MB'; }
 function openLibrary() { document.body.classList.add('exporting'); document.body.classList.remove('menuopen'); $('library').classList.remove('hidden'); drawLibrary(); }
-function closeLibrary() { closeGalView(); document.body.classList.remove('exporting'); $('library').classList.add('hidden'); }
+function closeLibrary() {
+  const g = $('library'); if (g.classList.contains('hidden')) return;
+  closeGalView(true); document.body.classList.remove('exporting');
+  hideAfter(g, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateY(10px)' }], { duration: 200 }, () => g.classList.add('hidden'));
+}
 function refreshLibraryIfOpen() { if (!$('library').classList.contains('hidden')) renderLibList(); }
 $('vlib').onclick = openLibrary;
 $('libClose').onclick = closeLibrary;
 addEventListener('keydown', e => { if (e.key !== 'Escape' || $('library').classList.contains('hidden')) return; if (!$('galView').classList.contains('hidden')) closeGalView(); else closeLibrary(); });
 function drawLibrary() {
-  segment($('libSeg'), [['downloads', 'Patterns'], ['presets', 'Styles'], ['files', 'Photos']], lib.tab, t => { lib.tab = t; drawLibrary(); });
-  renderLibList();
+  segment($('libSeg'), [['downloads', 'Patterns'], ['presets', 'Styles'], ['files', 'Photos']], lib.tab, t => { if (t === lib.tab) return; lib.tab = t; drawLibrary(); });
+  renderLibList().then(() => anim($('libList'), [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260 }));
 }
 const MODE_MARK = { none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', weave: '≋' };
 const modeName = m => (MODE_ITEM.opts.find(o => o[0] === m) || [, m])[1];
@@ -1485,7 +1504,7 @@ function galTile(media, label, onOpen, onHold) {
   if (typeof media === 'string') { const m = document.createElement('div'); m.className = 'gal-mark'; m.textContent = media; t.append(m); } else t.append(media);
   // Hold (~0.45s) to copy the tile's style; a plain tap still opens it
   const wasHeld = holdToCopy(t, onHold);
-  t.onclick = e => { if (wasHeld()) { e.preventDefault(); return; } onOpen(); };
+  t.onclick = e => { if (wasHeld()) { e.preventDefault(); return; } openedFrom = t; onOpen(); };
   return t;
 }
 // Press-and-hold gesture on el: dims while held, then calls onHold. Returns a check for "that press was a hold"
@@ -1512,7 +1531,7 @@ function copyStyle(style, name) {
 }
 function pasteStyle() {
   if (!copiedStyle || !img) return;
-  applyPreset({ name: copiedStyle.name, mode: copiedStyle.mode, state: copiedStyle.state }); flash('Style pasted');
+  applyPreset({ name: copiedStyle.name, mode: copiedStyle.mode, state: copiedStyle.state }); flash('Style pasted'); settleArt();
 }
 // Desktop: ⌘/Ctrl+C and ⌘/Ctrl+V copy and paste styles, unless you're typing or have text selected
 addEventListener('keydown', e => {
@@ -1562,6 +1581,7 @@ async function renderLibList() {
     });
   }
 }
+let openedFrom = null; // the tile the large view grows out of, and shrinks back into
 // Gallery action icons (Lucide)
 const GIC = {
   download: I('<path d="M12 15V3" />  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />  <path d="m7 10 5 5 5-5" />'),
@@ -1581,7 +1601,16 @@ function openGalView({ media, name, meta, actions, onHold }) {
   holdToCopy(m, onHold);
   const bar = $('galActions'); bar.innerHTML = '';
   actions.forEach(([label, icon, fn, primary]) => { const b = document.createElement('button'); b.innerHTML = icon; b.setAttribute('aria-label', label); b.title = label; if (primary) b.className = 'primary'; b.onclick = fn; bar.append(b); });
-  $('galView').classList.remove('hidden');
+  const view = $('galView'); view.classList.remove('hidden');
+  // Shared-element zoom: the picture grows out of the tile it came from; details and actions follow just after
+  const pic = m.firstElementChild, tile = openedFrom && (openedFrom.querySelector('img,video,.gal-mark') || openedFrom);
+  anim(view, [{ backgroundColor: 'rgba(0,0,0,0)' }, { backgroundColor: '#000' }], { duration: 260 });
+  [$('galBack'), m.nextElementSibling, $('galActions')].forEach((el, i) => anim(el, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 300, delay: 90 + i * 40, fill: 'backwards' }));
+  if (pic && tile) {
+    const go = () => { const a = tile.getBoundingClientRect(), b = pic.getBoundingClientRect(); if (!b.width || !b.height) return;
+      anim(pic, [{ transformOrigin: '0 0', transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${a.width / b.width}, ${a.height / b.height})` }, { transformOrigin: '0 0', transform: 'none' }], { duration: 360 }); };
+    if (pic.tagName === 'IMG' && !pic.complete) { pic.style.opacity = '0'; pic.onload = () => { pic.style.opacity = ''; go(); }; } else go();
+  }
 }
 function renameInView(cur, save) {
   const nameEl = $('galName'), inp = document.createElement('input'); inp.className = 'gal-rename'; inp.value = cur; inp.maxLength = 40;
@@ -1591,8 +1620,20 @@ function renameInView(cur, save) {
   inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); };
   inp.onblur = () => finish(true);
 }
-function closeGalView() { $('galView').classList.add('hidden'); clearThumbs($('galMedia')); }
-$('galBack').onclick = closeGalView;
+function closeGalView(instant) {
+  const view = $('galView'), m = $('galMedia'); if (view.classList.contains('hidden')) return;
+  const done = () => { view.classList.add('hidden'); clearThumbs(m); };
+  const pic = m.firstElementChild, tile = openedFrom && openedFrom.isConnected && (openedFrom.querySelector('img,video,.gal-mark') || openedFrom);
+  if (instant || !pic || calm()) return done();
+  [$('galBack'), m.nextElementSibling, $('galActions')].forEach(el => anim(el, [{ opacity: 1 }, { opacity: 0 }], { duration: 140, fill: 'forwards' }));
+  if (tile) {
+    // Shrink back into the tile, with the backdrop clearing to reveal the grid
+    const a = tile.getBoundingClientRect(), b = pic.getBoundingClientRect();
+    anim(pic, [{ transformOrigin: '0 0', transform: 'none' }, { transformOrigin: '0 0', transform: `translate(${a.left - b.left}px, ${a.top - b.top}px) scale(${a.width / b.width}, ${a.height / b.height})` }], { duration: 300, fill: 'forwards' });
+    hideAfter(view, [{ backgroundColor: '#000' }, { backgroundColor: 'rgba(0,0,0,0)' }], { duration: 300 }, () => { done(); view.getAnimations().forEach(x => x.cancel()); [$('galBack'), m.nextElementSibling, $('galActions')].forEach(el => el.getAnimations().forEach(x => x.cancel())); });
+  } else hideAfter(view, [{ opacity: 1 }, { opacity: 0 }], { duration: 200 }, () => { done(); [$('galBack'), m.nextElementSibling, $('galActions')].forEach(el => el.getAnimations().forEach(x => x.cancel())); });
+}
+$('galBack').onclick = () => closeGalView();
 function applyPreset(p) {
   const { __seed, __palette, __paletteSrc, ...rest } = p.state;
   Object.assign(v, rest);
@@ -1621,8 +1662,9 @@ function applyPreset(p) {
 const thumbUrls = new WeakMap();
 function thumbEl(f, box) {
   const url = URL.createObjectURL(f.blob); (thumbUrls.get(box) || thumbUrls.set(box, []).get(box)).push(url);
-  if (f.type.startsWith('video/')) { const el = document.createElement('video'); el.muted = true; el.playsInline = true; el.preload = 'metadata'; el.src = url + '#t=0.1'; return el; }
-  const el = document.createElement('img'); el.alt = ''; el.src = url; return el; // no async decoding: masonry tiles inside columns weren't painting with it
+  // Pictures fade in as they arrive (the .ready class), rather than popping in
+  if (f.type.startsWith('video/')) { const el = document.createElement('video'); el.muted = true; el.playsInline = true; el.preload = 'metadata'; el.onloadeddata = () => el.classList.add('ready'); el.src = url + '#t=0.1'; return el; }
+  const el = document.createElement('img'); el.alt = ''; el.onload = () => el.classList.add('ready'); el.src = url; return el; // no async decoding: masonry tiles inside columns weren't painting with it
 }
 function clearThumbs(box) { (thumbUrls.get(box) || []).forEach(u => URL.revokeObjectURL(u)); thumbUrls.set(box, []); box.innerHTML = ''; }
 // Loading screen: the last few photos/videos as one-tap thumbnails, plus a way into the full gallery

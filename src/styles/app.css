@@ -179,3 +179,30 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 .toast{z-index:30}
 .gal-tile.holding img,.gal-tile.holding video{opacity:.7; transition:opacity .45s}
 .gal-tile{-webkit-touch-callout:none; -webkit-user-select:none; user-select:none}
+
+/* ---------- Motion: quiet, quick, eased. Things grow from where you touched and settle ---------- */
+:root{ --ease:cubic-bezier(.2,.8,.2,1); }
+/* Press feedback: a slight give, then spring back */
+.tab,.item,.chip,.vbar > button,.topL button,.gal-back,.gal-actions button,.gal-tabs button,.callout button,.recent-item,.recent-all,#emptyUpload,.seg button,.xgo{
+  transition:transform .22s var(--ease), background-color .2s ease, color .2s ease, opacity .2s ease}
+.tab:active,.item:active,.chip:active,.vbar > button:active,.topL button:active,.gal-back:active,.gal-actions button:active,.recent-item:active,.recent-all:active,#emptyUpload:active,.seg button:active,.xgo:active{transform:scale(.93)}
+.gal-tabs button:active{transform:scale(.96)}
+.gal-tile{transition:transform .25s var(--ease)}
+.gal-tile:active,.gal-tile.holding{transform:scale(.97)}
+/* Gallery fades up in; pictures fade in as they load */
+.gallery:not(.hidden){animation:fadeUp .3s var(--ease)}
+.gal-tile img,.gal-tile video,.recent-item img,.recent-item video{opacity:0; transition:opacity .45s ease, transform .25s var(--ease)}
+.gal-tile img.ready,.gal-tile video.ready,.recent-item img.ready,.recent-item video.ready{opacity:1}
+/* Pop-ups grow from their source */
+.toast:not([hidden]){animation:dropIn .26s var(--ease)}
+.callout:not([hidden]){animation:popUp .2s var(--ease); transform-origin:50% 100%}
+body.menuopen .vbar{animation:menuIn .22s var(--ease); transform-origin:100% 0}
+.empty:not([hidden]) > *{animation:fadeUp .4s var(--ease) backwards}
+.empty > *:nth-child(2){animation-delay:.04s} .empty > *:nth-child(3){animation-delay:.08s} .empty > *:nth-child(4){animation-delay:.12s}
+@keyframes fadeUp{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+@keyframes dropIn{from{opacity:0; transform:translate(-50%,-6px) scale(.97)} to{opacity:1; transform:translate(-50%,0)}}
+@keyframes popUp{from{opacity:0; transform:scale(.9) translateY(4px)} to{opacity:1; transform:none}}
+@keyframes menuIn{from{opacity:0; transform:scale(.94)} to{opacity:1; transform:none}}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important; animation-delay:0s !important; transition-duration:.01ms !important}
+}
