@@ -3,7 +3,7 @@
    layout · icons · controls · gestures · video · export · library (presets/files/downloads).
    Everything runs in the browser. Ported from the original single-file artifact into a
    Vite module; the graphics/control logic below is otherwise unchanged. */
-import { storeFile, listFiles, deleteFile } from '../storage/files';
+import { storeFile, listFiles, deleteFile, getFile } from '../storage/files';
 import { savePreset, listPresets, deletePreset, renamePreset } from '../storage/presets';
 import { saveToDevice, listDownloads, deleteDownload, redownload } from '../storage/downloads';
 
@@ -831,7 +831,7 @@ let rawSnap = '';
 const rawKey = () => JSON.stringify([v, palette, seed]);
 const showRaw = () => { rawPreview = true; rawSnap = rawKey(); };
 let queued = false;
-const schedule = () => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; layout(); }); };
+const schedule = () => { saveSessionSoon(); if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; layout(); }); };
 addEventListener('resize', schedule);
 
 // ---------- icons ----------
@@ -1277,6 +1277,27 @@ const toast = t => { $('toast').textContent = t; $('toast').hidden = !t; };
 let flashT; const flash = t => { toast(t); clearTimeout(flashT); flashT = setTimeout(() => { if (!picking) toast(''); }, 1200); };
 
 // ---------- image in ----------
+// ---------- session: phones unload background pages, so the open photo (its stored copy) and every setting
+// are saved as you work and when you switch away, and reopened exactly on return ----------
+let currentFileId = null, sessionT = 0;
+const SESSION_KEY = 'loom.session';
+function saveSession() {
+  clearTimeout(sessionT);
+  if (!img || currentFileId == null) return;
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ fileId: currentFileId, v, seed, palette, paletteSrc, paletteAuto,
+      primed: { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } }));
+  } catch { /* storage full or blocked: nothing to restore later, which is fine */ }
+}
+const saveSessionSoon = () => { clearTimeout(sessionT); sessionT = setTimeout(saveSession, 400); };
+function restoreState(st) {
+  Object.assign(v, st.v); if (typeof st.seed === 'number') seed = st.seed;
+  if (Array.isArray(st.palette) && st.palette.length) { palette = st.palette.slice(); paletteSrc = (st.paletteSrc || st.palette).slice(); paletteAuto = !!st.paletteAuto; }
+  if (st.primed) ({ shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } = { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed, ...st.primed });
+  rawPreview = false; cache = null; builtTab = null;
+}
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveSession(); });
+addEventListener('pagehide', saveSession);
 // Loading: the woven loader appears only if opening takes a moment (no flash for quick loads)
 let loaderT = 0;
 function showLoading() { clearTimeout(loaderT); loaderT = setTimeout(() => { $('loader').hidden = false; }, 150); }
@@ -1301,11 +1322,12 @@ function loadFile(f, opts) {
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
   const im = new Image();
-  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); };
+  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); saveSessionSoon(); };
   im.onerror = () => { hideLoading(); flash("Couldn't open that image"); };
   showLoading();
   im.src = URL.createObjectURL(f);
-  if (!opts.skipStore) storeFile(f).then(refreshLibraryIfOpen).catch(() => {});
+  if ('fileId' in opts) currentFileId = opts.fileId;
+  if (!opts.skipStore) storeFile(f).then(id => { currentFileId = id; refreshLibraryIfOpen(); saveSessionSoon(); }).catch(() => {});
 }
 $('file').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
 $('emptyUpload').onclick = () => $('file').click();
@@ -1379,7 +1401,7 @@ function loadVideo(f, opts) {
   const ready = () => {
     if (started || !el.videoWidth || el.readyState < 2) return;
     const first = !img; started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
-    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
+    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
     toast(''); drawAll(); schedule(); showUI(); paintVbar(); frameLoop();
   };
   ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'timeupdate'].forEach(ev => el.addEventListener(ev, ready));
@@ -1394,7 +1416,8 @@ function loadVideo(f, opts) {
     addEventListener('pointerdown', go, true);
   });
   tryPlay();
-  if (!opts.skipStore) storeFile(f).then(refreshLibraryIfOpen).catch(() => {});
+  if ('fileId' in opts) currentFileId = opts.fileId;
+  if (!opts.skipStore) storeFile(f).then(id => { currentFileId = id; refreshLibraryIfOpen(); saveSessionSoon(); }).catch(() => {});
 }
 function frameLoop() {
   const el = vid; if (!el) return;
@@ -1812,7 +1835,7 @@ drawRecent();
 function reopenFile(f) {
   const file = new File([f.blob], f.name, { type: f.type });
   closeLibrary();
-  loadFile(file, { skipStore: true });
+  loadFile(file, { skipStore: true, fileId: f.id });
 }
 // A preset is the whole look: every setting, the shuffle seed and the palette
 // A small JPEG of the look for its gallery tile. Rendered fresh at thumbnail size (patterns scale with the
@@ -1847,6 +1870,11 @@ $('vsave').onclick = async () => {
 };
 
 layout();
+// Reopen the last session (photo + settings) if there is one
+try {
+  const st = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+  if (st && st.fileId != null) getFile(st.fileId).then(rec => { if (rec && !img) loadFile(new File([rec.blob], rec.name, { type: rec.type }), { skipStore: true, fileId: rec.id, restore: st }); }).catch(() => {});
+} catch { /* unreadable session: start fresh */ }
 // Boot splash: a short pause, the eight threads draw in once (last one done at ~1.6s), hold a beat, then fade away
 // …and once it's clear, the start screen's pieces fade up in turn
 setTimeout(() => { const b = $('boot'); const done = () => { b && b.remove(); document.body.classList.remove('booting'); }; if (b) hideAfter(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 500 }, done); else done(); }, 2050);
