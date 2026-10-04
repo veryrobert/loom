@@ -1454,7 +1454,6 @@ $('libClose').onclick = closeLibrary;
 addEventListener('keydown', e => { if (e.key !== 'Escape' || $('library').classList.contains('hidden')) return; if (!$('galView').classList.contains('hidden')) closeGalView(); else closeLibrary(); });
 function drawLibrary() {
   segment($('libSeg'), [['downloads', 'Patterns'], ['presets', 'Styles'], ['files', 'Photos']], lib.tab, t => { lib.tab = t; drawLibrary(); });
-  $('libSaveGroup').classList.toggle('hidden', lib.tab !== 'presets');
   renderLibList();
 }
 const MODE_MARK = { none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', weave: '≋' };
@@ -1472,7 +1471,7 @@ async function renderLibList() {
   const empty = msg => { box.innerHTML = `<p class="lib-empty">${msg}</p>`; };
   if (lib.tab === 'presets') {
     const items = await listPresets();
-    if (!items.length) return empty('No saved styles yet. Save the current look above, or with the save button in the top bar.');
+    if (!items.length) return empty('No saved styles yet. Use the save button in the top bar to keep a look.');
     items.forEach(p => {
       const media = () => { if (!p.thumb) return MODE_MARK[p.mode] || '◆'; const i = document.createElement('img'); i.src = p.thumb; i.alt = ''; return i; };
       box.append(galTile(media(), p.name, () => openGalView({
@@ -1585,14 +1584,6 @@ function lookThumb() {
   } catch { return undefined; }
 }
 const saveLook = name => savePreset(name, v.mode, { ...v, __seed: seed, __palette: palette.slice(), __paletteSrc: paletteSrc.slice() }, lookThumb());
-$('libSaveBtn').onclick = async () => {
-  const name = $('libSaveName').value.trim();
-  if (!name) { flash('Give the preset a name'); return; }
-  await saveLook(name);
-  $('libSaveName').value = '';
-  flash('Preset saved');
-  if (lib.tab === 'presets') renderLibList();
-};
 // One-tap save from the top bar, auto-named by mode and time; rename it later in the library
 // One Shuffle for everything: re-rolls the shared seed behind every random choice (glyph picks, Martens
 // stagger, dither square sizes, grain)

@@ -142,12 +142,8 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 .gal-tabs{display:flex; justify-content:center; gap:24px}
 .gal-tabs button{font-size:17px; font-weight:500; color:rgba(255,255,255,.45); padding:8px 0}
 .gal-tabs button[aria-pressed="true"]{color:#fff}
-.gal-save{display:flex; gap:8px; padding:0 12px 12px}
-.gal-save input{flex:1; min-width:0; height:40px; border-radius:20px; padding:0 16px; background:#161616; border:0; color:#fff; font-size:14px}
-.gal-save input::placeholder{color:rgba(255,255,255,.35)}
-.gal-save button{height:40px; padding:0 16px; border-radius:20px; background:#fff; color:#000; font-size:14px; font-weight:500; white-space:nowrap}
 .gal-grid{columns:2; column-gap:10px; padding:0 12px}
-@media (min-width:700px){ .gal-grid{columns:3; column-gap:12px; padding:0 16px} .gal-save{padding:0 16px 14px; max-width:520px} }
+@media (min-width:700px){ .gal-grid{columns:3; column-gap:12px; padding:0 16px} }
 @media (min-width:1100px){ .gal-grid{columns:4} }
 @media (min-width:1500px){ .gal-grid{columns:5} }
 .gal-grid .lib-empty{column-span:all}
