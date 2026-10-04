@@ -129,15 +129,16 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
    artwork is never covered; labels appear on hover ---------- */
 @media (min-width: 900px) {
   .dock{gap:10px}
-  .dock > .tabs{z-index:2; position:fixed; left:14px; top:50%; transform:translateY(-50%); flex-direction:column; padding:6px; gap:4px}
-  .tab{width:52px; height:52px; border-radius:18px}
+  .dock > .tabs{z-index:2; position:fixed; left:12px; top:50%; transform:translateY(-50%); flex-direction:column; padding:4px; gap:2px}
+  .tab{width:42px; height:42px; border-radius:15px}
+  .tab svg{width:20px; height:20px}
   .tab span{display:none}
-  .dock > .items{z-index:1; position:fixed; left:84px; top:50%; transform:translateY(-50%); flex-direction:column; width:auto;
-    overflow:visible; scroll-snap-type:none; padding:4px; gap:10px}
+  .dock > .items{z-index:1; position:fixed; left:64px; top:50%; transform:translateY(-50%); flex-direction:column; width:auto;
+    overflow:visible; scroll-snap-type:none; padding:4px; gap:6px}
   .items::before,.items::after{display:none}
-  .item{width:50px; height:50px}
-  .slot,.scrub,.chips{width:min(640px, calc(100vw - 180px))}
-  .dock > .slot,.dock > .title{margin-left:150px}
+  .item{width:44px; height:44px}
+  .slot,.scrub,.chips{width:min(640px, calc(100vw - 150px))}
+  .dock > .slot,.dock > .title{margin-left:124px}
   /* Hover labels for icon-only buttons */
   .tab,.item,.vbar > button{position:relative}
   .tab::after,.item::after{content:attr(data-label); left:calc(100% + 12px); top:50%; transform:translateY(-50%)}

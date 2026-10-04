@@ -714,7 +714,7 @@ function extractPalette() {
 
 // ---------- layout ----------
 // Desktop chrome footprint: the stacked tab + setting columns on the left, title/slider/swatches at the bottom
-const DESK_LEFT = 150, DESK_BOTTOM = 150;
+const DESK_LEFT = 124, DESK_BOTTOM = 150;
 function layout() {
   // Fit the artboard between the top bar and the tab bar (tab controls may still float over it)
   // Keep the artboard clear of the chrome. The top bar's row is fixed height (on phones its burger menu
