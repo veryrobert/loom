@@ -868,7 +868,6 @@ function randomShapes() {
 }
 const COLOUR_COMMON = [
     T_('photoColour', 'Colour the photo', IC.roller),
-    S_('hue', 'Hue', IC.hue, -180, 180, 1), S_('sat', 'Saturation', IC.drop, 0, 2, 0.01),
     S_('kcount', 'Palette colours', IC.swatch, 2, 12, 1, () => { if (img) { extractPalette(); drawSwatches(); } }),
     A_('Extract palette', IC.wand, () => { extractPalette(); if (v.mode === 'weave') v.cmode = 'palette'; drawSwatches(); }),
     Object.assign(A_('Random palette', IC.dice, () => { randomPalette(); flash('Random palette'); }), { flash: false }),
@@ -903,18 +902,23 @@ const CROP_REST = [
 function CROP_ITEMS() { return [CROP_REST[0], ...SPLIT_ITEMS(), ...CROP_REST.slice(1)]; }
 const TABS = [
   { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
+  // Adjust: the photo itself. Texture: what's laid over the result (grain, glow, blend, dither finish)
   { id: 'adjust', label: 'Adjust', icon: IC.adjust, items: [
-    S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01), S_('grain', 'Grain', IC.noise, 0, 80, 1),
+    S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
+    S_('sat', 'Saturation', IC.drop, 0, 2, 0.01), S_('hue', 'Hue', IC.hue, -180, 180, 1)] },
+  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
+  { id: 'texture', label: 'Texture', icon: IC.noise, items: [
+    S_('grain', 'Grain', IC.noise, 0, 80, 1),
     S_('glow', 'Glow', IC.glow, 0, 2, 0.01), S_('gsize', 'Glow size', IC.radius, 2, 60, 1),
     C_('blend', 'Blend', IC.blend, [['none', 'Off'], ['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['hard-light', 'Hard light'], ['color', 'Colour'], ['luminosity', 'Luminosity'], ['difference', 'Difference']]),
-    S_('mix', 'Blend amount', IC.mix, 0, 1, 0.01)] },
-  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
-  { id: 'dither', label: 'Dither', icon: IC.dither, items: [
-    Object.assign(C_('dither', 'Dither type', IC.grid, [['off', 'Off'], ['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
-    S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), S_('dvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('dpal', 'Use palette', IC.palette)] },
+    S_('mix', 'Blend amount', IC.mix, 0, 1, 0.01),
+    // Dither finish — hidden in Dither mode, which has its own; its settings show once a type is picked
+    when(C_('dither', 'Dither', IC.dither, [['off', 'Off'], ['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), () => v.mode !== 'dither'),
+    ...[S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), S_('dvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('dpal', 'Use palette', IC.palette)]
+      .map(it => when(it, () => v.mode !== 'dither' && v.dither !== 'off'))] },
   { id: 'crop', label: 'Crop', icon: IC.crop, get items() { return CROP_ITEMS(); } },
 ];
-let tabId = null; const selIdx = { adjust: 0, colour: 0, pattern: 0, dither: 0, crop: 0 };
+let tabId = null; const selIdx = { adjust: 0, colour: 0, pattern: 0, texture: 0, crop: 0 };
 const curTab = () => TABS.find(t => t.id === tabId);
 const tick = () => curTab().items.filter(it => (it.t === 's' || it.t === 'c') && isShown(it));
 const corner = () => curTab().items.filter(it => (it.t === 'a' || it.t === 't' || it.t === 'h' || it.t === 'k') && isShown(it));
@@ -927,9 +931,7 @@ function ringSVG(n) {
 }
 function drawTabs() {
   const nav = $('tabs'); nav.innerHTML = '';
-  const hideDitherTab = v.mode === 'dither';
-  if (hideDitherTab && tabId === 'dither') tabId = null;
-  TABS.filter(t => !(hideDitherTab && t.id === 'dither')).forEach(t => {
+  TABS.forEach(t => {
     const b = document.createElement('button'); b.className = 'tab'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', t.id === tabId);
     b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => { tabId = tabId === t.id ? null : t.id; if (tabId) { rawPreview = false; cache = null; } builtTab = null; drawAll(); schedule(); }; nav.append(b);
   });
