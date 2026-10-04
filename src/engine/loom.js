@@ -1839,6 +1839,6 @@ $('vsave').onclick = async () => {
 };
 
 layout();
-// Boot splash: let the woven loop show for a beat, then fade it away
-setTimeout(() => { const b = $('boot'); if (b) hideAfter(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 420 }, () => b.remove()); }, 550);
+// Boot splash: hold for one full woven loop (1.8s, plus the last thread's stagger), then fade it away
+setTimeout(() => { const b = $('boot'); if (b) hideAfter(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 500 }, () => b.remove()); }, 2300);
 }
