@@ -33,6 +33,7 @@ const v = {
   // (×0.7) and Dither mode dots (×0.2); density zones vary it across the image
   mode: 'none', scale: 10, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
   mdir: 'h', mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30,
+  gltype: 'reeded', gldir: 'v', glrefract: 0.7, glfrost: 0.2, glhigh: 0.5, glshadow: 0.35, glfringe: 0.2, glirreg: false,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
 };
@@ -513,6 +514,82 @@ function renderNone(W, H, g, u) {
   for (const [qx, qy, qw, qh] of regions(W, H)) { const w2 = Math.min(qw, W - qx), h2 = Math.min(qh, H - qy); if (w2 > 0 && h2 > 0) g.drawImage(fin, qx, qy, w2, h2, qx, qy, w2, h2); }
 }
 
+// ---------- glass mode: the photo behind reeded, fluted or frosted glass (see docs/glass-pattern.md).
+// Ribs run along one axis; each pixel samples the photo shifted *across* its rib (the lens/prism shape),
+// red and blue a touch apart for a colour fringe, then the result is blurred *along* the ribs and lit with
+// an edge highlight, a soft shadow and a fine seam. Scale sets rib width ----------
+function renderGlass(W, H, g, u, live) {
+  patternSource(W, H);
+  const pkey = JSON.stringify(['glass', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
+  let O;
+  if (live && cache && cache.pkey === pkey) O = cache.O.slice();
+  else {
+    const S = sctx.getImageData(0, 0, W, H).data;
+    if (v.photoColour && paletteShifted()) recolourPass(S);
+    adjustPass(S);
+    O = glassPass(S, W, H, u);
+    glowPass(O, W, H, u);
+    if (v.dither === 'off') grainPass(O);
+    if (live) cache = { pkey, O: O.slice() };
+  }
+  tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
+  fin.width = W; fin.height = H; fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; fctx.drawImage(tmp, 0, 0);
+  ditherFinish(W, H, u);
+  if (v.dither !== 'off') grainFinish(W, H);
+  if (v.blend !== 'none' && v.mix > 0) { fctx.globalCompositeOperation = v.blend; fctx.globalAlpha = v.mix; fctx.drawImage(src, 0, 0); fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; }
+  g.drawImage(adjustedSource(W, H), 0, 0);
+  for (const [qx, qy, qw, qh] of regions(W, H)) { const w2 = Math.min(qw, W - qx), h2 = Math.min(qh, H - qy); if (w2 > 0 && h2 > 0) g.drawImage(fin, qx, qy, w2, h2, qx, qy, w2, h2); }
+}
+function glassPass(S, W, H, u) {
+  const vert = v.gldir !== 'h', nC = vert ? W : H, nA = vert ? H : W; // C: across the ribs, A: along them
+  const at = vert ? (a, c) => (a * W + c) * 4 : (a, c) => (c * W + a) * 4;
+  const type = v.gltype, rib = Math.max(3, v.scale * 3 * u), rnd = mulberry(seed * 53 + 11);
+  // Per position across the ribs: where R, G and B sample from, and how the glass lights it
+  const sR = new Int32Array(nC), sG = new Int32Array(nC), sB = new Int32Array(nC), mul = new Float32Array(nC), add = new Float32Array(nC);
+  const clampC = c => c < 0 ? Math.min(nC - 1, -c) : c >= nC ? Math.max(0, 2 * nC - 2 - c) : c; // mirror at the edges
+  let c0 = 0, ribSum = 0, ribs = 0;
+  while (c0 < nC) {
+    const w = Math.max(2, Math.round(rib * (v.glirreg ? 0.55 + rnd() * 0.9 : 1))); ribSum += w; ribs++;
+    for (let c = c0; c < Math.min(nC, c0 + w); c++) {
+      const t = (c - c0 + 0.5) / w, n = t * 2 - 1;                // 0..1 across this rib, and -1..1
+      // Refraction shape: reeded = cylindrical lens (shift grows from the centre), fluted = prism ramp
+      const shape = type === 'frosted' ? 0 : type === 'fluted' ? -n : -Math.sin(n * Math.PI / 2) * (0.6 + 0.4 * Math.abs(n));
+      const d = shape * v.glrefract * w * 0.5, f = 1 + v.glfringe * 0.35;
+      sG[c] = clampC(Math.round(c + d)); sR[c] = clampC(Math.round(c + d * f)); sB[c] = clampC(Math.round(c + d / f));
+      // Light: a highlight stroke near the leading edge, shadow falling toward the far edge, a dark seam
+      const hl = type === 'frosted' ? 0 : Math.exp(-(((t - 0.12) / 0.07) ** 2)) + 0.35 * Math.exp(-(((t - 0.5) / 0.25) ** 2)) * (type === 'reeded' ? 1 : 0);
+      const sh = type === 'frosted' ? 0 : Math.max(0, (t - 0.55) / 0.45) ** 1.6, seam = type === 'frosted' ? 0 : Math.exp(-((Math.min(t, 1 - t) / 0.025) ** 2));
+      mul[c] = (1 - v.glshadow * 0.42 * sh) * (1 - 0.35 * seam * (v.glhigh * 0.5 + v.glshadow * 0.5));
+      add[c] = v.glhigh * 70 * hl;
+    }
+    c0 += w;
+  }
+  // Gather into float channels laid out along the ribs, so the blur can run straight down each rib
+  const R = new Float32Array(nC * nA), G = new Float32Array(nC * nA), B = new Float32Array(nC * nA);
+  for (let c = 0; c < nC; c++) {
+    const base = c * nA, xr = sR[c], xg = sG[c], xb = sB[c];
+    for (let a = 0; a < nA; a++) { R[base + a] = S[at(a, xr)]; G[base + a] = S[at(a, xg) + 1]; B[base + a] = S[at(a, xb) + 2]; }
+  }
+  // Frost: two box-blur passes along each rib (close to a Gaussian); frosted glass also hazes across
+  const rA = Math.round(v.glfrost * (ribSum / ribs) * 1.6), rC = type === 'frosted' ? Math.round(v.glfrost * (ribSum / ribs) * 0.8) : 0;
+  const along = (X, r) => { if (r < 1) return; const tmpL = new Float32Array(nA);
+    for (let c = 0; c < nC; c++) { const base = c * nA; for (let pass = 0; pass < 2; pass++) { let acc = 0; for (let a = -r; a <= r; a++) acc += X[base + Math.min(nA - 1, Math.max(0, a))];
+      for (let a = 0; a < nA; a++) { tmpL[a] = acc / (2 * r + 1); acc += X[base + Math.min(nA - 1, a + r + 1)] - X[base + Math.max(0, a - r)]; } X.set(tmpL, base); } } };
+  const across = (X, r) => { if (r < 1) return; const col = new Float32Array(nC), outC = new Float32Array(nC);
+    for (let a = 0; a < nA; a++) { for (let c = 0; c < nC; c++) col[c] = X[c * nA + a];
+      for (let pass = 0; pass < 2; pass++) { let acc = 0; for (let c = -r; c <= r; c++) acc += col[Math.min(nC - 1, Math.max(0, c))];
+        for (let c = 0; c < nC; c++) { outC[c] = acc / (2 * r + 1); acc += col[Math.min(nC - 1, c + r + 1)] - col[Math.max(0, c - r)]; } col.set(outC); }
+      for (let c = 0; c < nC; c++) X[c * nA + a] = col[c]; } };
+  [R, G, B].forEach(X => { along(X, rA); across(X, rC); });
+  // Light the glass and write back in image layout
+  const O = new Uint8ClampedArray(W * H * 4);
+  for (let c = 0; c < nC; c++) {
+    const base = c * nA, m = mul[c], ad = add[c];
+    for (let a = 0; a < nA; a++) { const i = at(a, c); O[i] = R[base + a] * m + ad; O[i + 1] = G[base + a] * m + ad; O[i + 2] = B[base + a] * m + ad; O[i + 3] = 255; }
+  }
+  return O;
+}
+
 // ---------- dither mode: the whole image reduced straight to a 2(+)-colour dither ----------
 function renderDither(W, H, g, u, live) {
   patternSource(W, H);
@@ -594,6 +671,7 @@ function render(W, H, target) {
   const u = Math.max(W, H) / 850;
   const live = target === out;
   if (v.mode === 'none') return renderNone(W, H, g, u);
+  if (v.mode === 'glass') return renderGlass(W, H, g, u, live);
   if (v.mode === 'shapes') return renderShapes(W, H, g, u, live);
   if (v.mode === 'dither') return renderDither(W, H, g, u, live);
   if (v.mode === 'glyph') return renderGlyph(W, H, g, u, live);
@@ -825,7 +903,7 @@ const A_ = (label, icon, fn) => ({ t: 'a', label, icon, fn });
 const FORMATS = [['image', 'Original', IC.original], ['screen', 'Full screen', IC.fullscreen], ['1', '1:1'], ['0.8', '4:5'], ['0.75', '3:4'], ['0.6667', '2:3'], ['0.5625', '9:16'], ['1.7778', '16:9'], ['1.3333', '4:3'], ['1.5', '3:2'], ['0.7071', 'A4'], ['1.4142', 'A4 wide']];
 // Switch to hide Martens from the Mode picker without removing it
 const MARTENS_ON = true;
-const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : [])]), { onPick: () => {
+const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : []), ['glass', 'Glass']]), { onPick: () => {
   builtTab = null; selIdx.pattern = 0; selIdx.colour = 0; settleArt();
   primeMode();
 } });
@@ -873,6 +951,15 @@ const GLYPH_ITEMS = [MODE_ITEM,
 const DITHER_ITEMS = [MODE_ITEM,
     Object.assign(C_('ddither', 'Dither type', IC.grid, [['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
     S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('ddpal', 'Use palette', IC.palette)];
+const GLASS_ITEMS = [MODE_ITEM,
+    C_('gltype', 'Glass', IC.layout, [['reeded', 'Reeded'], ['fluted', 'Fluted'], ['frosted', 'Frosted']]),
+    C_('gldir', 'Direction', IC.offset, [['v', 'Vertical'], ['h', 'Horizontal']]),
+    when(S_('glrefract', 'Refraction', IC.wind, 0, 1.5, 0.01), () => v.gltype !== 'frosted'),
+    S_('glfrost', 'Frost', IC.glow, 0, 1, 0.01),
+    when(S_('glhigh', 'Highlights', IC.sun, 0, 1, 0.01), () => v.gltype !== 'frosted'),
+    when(S_('glshadow', 'Shadows', IC.contrast, 0, 1, 0.01), () => v.gltype !== 'frosted'),
+    when(S_('glfringe', 'Colour fringe', IC.hue, 0, 1, 0.01), () => v.gltype !== 'frosted'),
+    T_('glirreg', 'Irregular ribs', IC.uneven)];
 const MARTENS_ITEMS = [MODE_ITEM,
     C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical'], ['d', 'Diagonal']]),
     when(S_('mangle', 'Angle', IC.ruler, 5, 85, 1), () => v.mdir === 'd'),
@@ -950,12 +1037,12 @@ const CROP_ITEMS = [
     COMPARE_ITEM];
 function MASK_ITEMS() { return [...SPLIT_ITEMS(), COMPARE_ITEM]; }
 const TABS = [
-  { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
+  { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'glass' ? GLASS_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
   // Adjust: the photo itself. Texture: what's laid over the result (grain, glow, blend, dither finish)
   { id: 'adjust', label: 'Adjust', icon: IC.adjust, items: [
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
     S_('sat', 'Saturation', IC.drop, 0, 2, 0.01), S_('hue', 'Hue', IC.hue, -180, 180, 1)] },
-  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
+  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'glass' ? COLOUR_COMMON : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
   { id: 'texture', label: 'Texture', icon: IC.noise, items: [
     S_('grain', 'Grain', IC.noise, 0, 80, 1),
     S_('glow', 'Glow', IC.glow, 0, 2, 0.01), when(S_('gsize', 'Glow size', IC.radius, 2, 60, 1), () => v.glow > 0),
@@ -1496,7 +1583,7 @@ function drawLibrary() {
   segment($('libSeg'), [['downloads', 'Patterns'], ['presets', 'Styles'], ['files', 'Photos']], lib.tab, t => { if (t === lib.tab) return; lib.tab = t; drawLibrary(); });
   renderLibList().then(() => anim($('libList'), [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260 }));
 }
-const MODE_MARK = { none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', weave: '≋' };
+const MODE_MARK = { none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', glass: '▥', weave: '≋' };
 const modeName = m => (MODE_ITEM.opts.find(o => o[0] === m) || [, m])[1];
 // A tile is just the picture at its natural shape (masonry); tapping opens it large with its actions
 function galTile(media, label, onOpen, onHold) {
