@@ -21,16 +21,18 @@ const v = {
   zoom: 1, panX: 0, panY: 0, format: 'image', split: 1, side: 'left', pcover: 0.5, psize: 4, pdepth: 2, mscale: 1, mx: 0, my: 0, maskMove: false, photoColour: true, exportLong: 'native',
   detail: 0, perstripe: true, cmode: 'palette', kcount: 7,
   bri: 1, con: 1, sat: 1, hue: 0, glow: 0, gsize: 10, blend: 'none', mix: 0.25,
-  cols: 6, rows: 8, merge: 0.3, uneven: 0.35, pitch: 7, depth: 0, offset: true, accents: 0,
+  cols: 6, rows: 8, merge: 0.3, uneven: 0.35, depth: 0, offset: true, accents: 0,
   // Grain is global (Adjust tab) — every mode adds it inside its own pipeline, before any dithering
   grain: 0, invert: false,
   dither: 'off', dlevels: 5, dsize: 2, dpal: false, dvary: 0,
   // Dither mode's own settings — kept apart from the Dither tab above, which is a finish for the other modes
-  ddither: 'ordered', ddlevels: 2, ddsize: 2, ddpal: true, ddvary: 0,
+  ddither: 'ordered', ddlevels: 2, ddpal: true, ddvary: 0,
   // Glyph mode = Glyph mix's look, on its own keys
-  gcell: 9, gsize: 0.55, ghalf: 0.55, gjitter: 0.45, gset: 'classic',
-  mode: 'none', cell: 12, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
-  mdir: 'h', mpitch: 10, mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30,
+  gset: 'classic',
+  // scale: one size for every pattern — Shapes cells, Glyph grid, Martens line spacing, Pixel stripes
+  // (×0.7) and Dither mode dots (×0.2); density zones vary it across the image
+  mode: 'none', scale: 10, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
+  mdir: 'h', mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
 };
@@ -326,7 +328,7 @@ function shapeGeometry(W, H, u, S) {
   const shown = palette.length ? palette : ['#000000', '#ffffff'];
   const pal = (paletteSrc.length === palette.length && palette.length ? paletteSrc : shown).map(hex2rgb);
   const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-  const cs = Math.max(2, v.cell * u), nx = Math.ceil(W / cs), ny = Math.ceil(H / cs);
+  const cs = Math.max(2, v.scale * u), nx = Math.ceil(W / cs), ny = Math.ceil(H / cs);
   const custom = v.ground === 'custom', gc = hex2rgb(v.groundColor);
   let gi = v.ground === 'lightest' ? pal.length - 1 : v.ground === 'darkest' ? 0 : -1;
   if (custom) gi = nearestIdx(gc, pal);
@@ -459,7 +461,7 @@ function ditherFinish(W, H, u) {
 }
 function renderShapes(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.sbarw, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.grain, v.dither, v.jitter, v.stone, v.mode, v.gset, v.invert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
+  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.scale, v.ssize, v.sbarw, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.grain, v.dither, v.jitter, v.stone, v.mode, v.gset, v.invert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
   let base;
   if (live && cache && cache.pkey === pkey) base = cache.P;
   else {
@@ -514,13 +516,13 @@ function renderNone(W, H, g, u) {
 // ---------- dither mode: the whole image reduced straight to a 2(+)-colour dither ----------
 function renderDither(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['dither', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.ddsize, v.ddpal, v.ddvary, v.grain, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['dither', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, palette, v.ddither, v.ddlevels, v.scale, v.ddpal, v.ddvary, v.grain, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
     O = sctx.getImageData(0, 0, W, H).data.slice();
     adjustPass(O);
-    dither(O, W, H, u, palette.map(hex2rgb), { type: v.ddither, levels: v.ddlevels, size: v.ddsize, usePal: v.ddpal, vary: v.ddvary });
+    dither(O, W, H, u, palette.map(hex2rgb), { type: v.ddither, levels: v.ddlevels, size: v.scale * 0.2, usePal: v.ddpal, vary: v.ddvary });
     grainPass(O);
     if (live) cache = { pkey, O: O.slice() };
   }
@@ -535,8 +537,7 @@ function renderDither(W, H, g, u, live) {
 // on a plain ground, mono ink. Glyph keeps its own settings so it never disturbs Shapes mode ----------
 if (document.fonts) document.fonts.load('700 32px Inter', '$€£¥₿').then(() => { cache = null; if (img) schedule(); }).catch(() => {});
 function renderGlyph(W, H, g, u, live) {
-  const o = { sset: 'glyph', sby: 'tone', stone: 'mono', ground: 'lightest',
-    cell: v.gcell, ssize: v.gsize, halftone: v.ghalf, jitter: v.gjitter };
+  const o = { sset: 'glyph', sby: 'tone', stone: 'mono', ground: 'lightest' };
   const keep = {}; for (const k in o) keep[k] = v[k];
   Object.assign(v, o);
   try { renderShapes(W, H, g, u, live); } finally { Object.assign(v, keep); }
@@ -547,7 +548,7 @@ function renderGlyph(W, H, g, u, live) {
 // Built on the Shapes engine's line/bar shapes with thickness snapped to mlevels steps ----------
 function renderMartens(W, H, g, u, live) {
   const o = { sline: v.mdir, stone: 'mono', ground: 'lightest',
-    cell: v.mpitch, ssize: v.msize, slevels: v.mlevels, sseg: v.mseg, sstagger: v.mstagger, sthresh: v.mthresh, sfull: v.mfull, sangle: v.mangle };
+    ssize: v.msize, slevels: v.mlevels, sseg: v.mseg, sstagger: v.mstagger, sthresh: v.mthresh, sfull: v.mfull, sangle: v.mangle };
   const keep = {}; for (const k in o) keep[k] = v[k];
   Object.assign(v, o);
   try { renderShapes(W, H, g, u, live); } finally { Object.assign(v, keep); }
@@ -570,14 +571,14 @@ function zoneRects(W, H) {
 }
 function renderZones(W, H, target) {
   const { rects, L } = zoneRects(W, H);
-  const keep = { cell: v.cell, dsize: v.dsize, pitch: v.pitch, cols: v.cols, rows: v.rows, zmode: v.zmode };
+  const keep = { scale: v.scale, dsize: v.dsize, cols: v.cols, rows: v.rows, zmode: v.zmode };
   const used = [...new Set(rects.map(z => z[4]))];
   const layers = {};
   v.zmode = 'off';
   try {
     for (const l of used) {
       const f = L > 1 ? 1 + (v.zrange - 1) * l / (L - 1) : 1;
-      v.cell = keep.cell * f; v.dsize = Math.max(1, Math.round(keep.dsize * f)); v.pitch = keep.pitch * f;
+      v.scale = keep.scale * f; v.dsize = Math.max(1, Math.round(keep.dsize * f));
       v.cols = Math.max(2, Math.round(keep.cols / f)); v.rows = Math.max(2, Math.round(keep.rows / f));
       const c = document.createElement('canvas'); render(W, H, c); layers[l] = c;
     }
@@ -598,7 +599,7 @@ function render(W, H, target) {
   if (v.mode === 'dither') return renderDither(W, H, g, u, live);
   if (v.mode === 'glyph') return renderGlyph(W, H, g, u, live);
   if (v.mode === 'martens') return renderMartens(W, H, g, u, live);
-  const pkey = JSON.stringify([W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.cols, v.rows, v.merge, v.uneven, v.pitch, v.depth, v.offset, v.grain, v.dither, v.dlevels, v.dsize, v.dpal, v.dvary, v.invert, seed, imgId]);
+  const pkey = JSON.stringify([W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.cols, v.rows, v.merge, v.uneven, v.scale, v.depth, v.offset, v.grain, v.dither, v.dlevels, v.dsize, v.dpal, v.dvary, v.invert, seed, imgId]);
   let P;
   if (live && cache && cache.pkey === pkey) P = cache.P;
   else {
@@ -607,7 +608,7 @@ function render(W, H, target) {
   const S = sctx.getImageData(0, 0, W, H).data;
   const rx = 0, ry = 0, RW = W, RH = H;
   const rnd = mulberry(seed), nrnd = mulberry(seed * 31 + 5);
-  const cols = v.cols, rows = v.rows, pitch = v.pitch * u, depth = v.depth, noise = v.dither === 'off' ? v.grain : 0, det = v.detail;
+  const cols = v.cols, rows = v.rows, pitch = v.scale * 0.7 * u, depth = v.depth, noise = v.dither === 'off' ? v.grain : 0, det = v.detail;
   const usePal = v.cmode === 'palette' && palette.length, pal = palette.map(hex2rgb), palM = (paletteSrc.length === palette.length ? paletteSrc : palette).map(hex2rgb);
   const cx = Array.from({ length: cols + 1 }, (_, i) => Math.round(i * RW / cols));
   const hs = Array.from({ length: rows }, () => 1 + (rnd() * 2 - 1) * v.uneven * 0.75), hsum = hs.reduce((a, b) => a + b, 0);
@@ -817,9 +818,13 @@ function primeMode() {
   const untouched = v.con === 1 && v.sat === 1;
   if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; if (untouched) { v.sat = 1.1; v.con = 1.05; } if (img && paletteAuto) extractPalette(); }
   if (v.mode === 'weave' && !weavePrimed) { weavePrimed = true; if (untouched) { v.con = 1.15; v.sat = 1.25; } }
-  if (v.mode === 'glyph' && !glyphModePrimed) { glyphModePrimed = true; palette = ['#ffffff', '#111111']; paletteSrc = palette.slice(); paletteAuto = false; }
-  if (v.mode === 'martens' && !martensPrimed) { martensPrimed = true; palette = ['#111111', '#f2f2f2']; paletteSrc = palette.slice(); paletteAuto = false; }
-  if (v.mode === 'dither' && !ditherPrimed) { ditherPrimed = true; palette = ['#000000', '#ffffff']; paletteSrc = palette.slice(); paletteAuto = false; }
+  if (v.mode === 'glyph' && !glyphModePrimed) {
+    glyphModePrimed = true;
+    if (v.ssize === D0.ssize && v.halftone === D0.halftone && v.jitter === D0.jitter) { v.ssize = 0.55; v.halftone = 0.55; v.jitter = 0.45; }
+    if (paletteAuto) { palette = ['#ffffff', '#111111']; paletteSrc = palette.slice(); paletteAuto = false; }
+  }
+  if (v.mode === 'martens' && !martensPrimed) { martensPrimed = true; if (paletteAuto) { palette = ['#111111', '#f2f2f2']; paletteSrc = palette.slice(); paletteAuto = false; } }
+  if (v.mode === 'dither' && !ditherPrimed) { ditherPrimed = true; if (paletteAuto) { palette = ['#000000', '#ffffff']; paletteSrc = palette.slice(); paletteAuto = false; } }
 }
 primeMode();
 // Controls can declare when they apply; hidden ones keep their values
@@ -830,33 +835,35 @@ const DENSITY_ITEMS = [
     C_('zmode', 'Density', IC.zmode, [['off', 'Off'], ['stack', 'Stack'], ['grid', 'Grid']]),
     when(S_('zones', 'Zones', IC.zones, 2, 12, 1), densityOn), when(S_('zrange', 'Density range', IC.zrange, 1.5, 6, 0.1), densityOn),
     when(C_('zorder', 'Order', IC.zorder, [['coarse', 'Coarse first'], ['fine', 'Fine first'], ['random', 'Random']]), densityOn)];
-const WEAVE_ITEMS = [MODE_ITEM,
+const SCALE_ITEM = S_('scale', 'Scale', IC.cell, 3, 48, 1);
+const WEAVE_ITEMS = [MODE_ITEM, SCALE_ITEM,
     S_('cols', 'Columns', IC.cols, 2, 48, 1), S_('rows', 'Rows', IC.rows, 2, 48, 1), S_('merge', 'Merge', IC.merge, 0, 0.9, 0.01), S_('uneven', 'Uneven rows', IC.uneven, 0, 1, 0.01),
-    S_('pitch', 'Stripe width', IC.width, 3, 48, 1), S_('depth', 'Stripe depth', IC.depth, 0, 1, 0.01), T_('offset', 'Offset stripes', IC.offset),
+    S_('depth', 'Stripe depth', IC.depth, 0, 1, 0.01), T_('offset', 'Offset stripes', IC.offset),
     S_('accents', 'Tick rules', IC.ruler, 0, 12, 1), ...DENSITY_ITEMS];
 const SSET_ITEM = Object.assign(C_('sset', 'Shapes', IC.shapes, [['mixed', 'Mixed'], ['dot', 'Dots'], ['square', 'Squares'], ['diamond', 'Diamonds'], ['hline', 'Lines'], ['vbar', 'Bars'], ['cross', 'Crosses'], ['triangle', 'Triangles'], ['arrow', 'Arrows'], ['ring', 'Rings'], ['x', 'Diagonal cross']]));
 const SHAPE_ITEMS = [MODE_ITEM, SSET_ITEM,
-    S_('cell', 'Cell size', IC.cell, 3, 40, 1), S_('ssize', 'Shape size', IC.dot, 0.2, 1.3, 0.01),
+    SCALE_ITEM, S_('ssize', 'Shape size', IC.dot, 0.1, 1.3, 0.01),
     when(S_('sbarw', 'Bar width', IC.width, 0.5, 3, 0.01), () => ['hline', 'vbar', 'mixed'].includes(v.sset)), S_('halftone', 'Halftone', IC.halftone, 0, 1, 0.01),
     C_('sby', 'Shape by', IC.bands, [['tone', 'Tone'], ['rows', 'Rows']]), when(S_('bandRows', 'Band height', IC.rows, 1, 24, 1), () => v.sby === 'rows'),
     S_('jitter', 'Shape mix', IC.wind, 0, 1, 0.01),
     Object.assign(A_('Random settings', IC.dice, randomShapes), { flash: false }),
     ...DENSITY_ITEMS];
 const GLYPH_ITEMS = [MODE_ITEM,
-    S_('gcell', 'Grid size', IC.cell, 4, 40, 1), S_('gsize', 'Glyph size', IC.size, 0.1, 1.2, 0.01),
-    S_('ghalf', 'Tone to size', IC.halftone, 0, 1, 0.01), S_('gjitter', 'Mix', IC.dice, 0, 1, 0.01),
-    C_('gset', 'Glyphs', IC.shapes, [['classic', 'Classic'], ['geometric', 'Geometric'], ['stars', 'Stars'], ['arrows', 'Arrows'], ['curves', 'Curves'], ['money', 'Money'], ['everything', 'Everything']])];
+    // Size, Tone to size and Mix are Shapes' own settings (ssize / halftone / jitter), shared both ways
+    SCALE_ITEM, S_('ssize', 'Glyph size', IC.size, 0.1, 1.3, 0.01),
+    S_('halftone', 'Tone to size', IC.halftone, 0, 1, 0.01), S_('jitter', 'Mix', IC.dice, 0, 1, 0.01),
+    C_('gset', 'Glyphs', IC.shapes, [['classic', 'Classic'], ['geometric', 'Geometric'], ['stars', 'Stars'], ['arrows', 'Arrows'], ['curves', 'Curves'], ['money', 'Money'], ['everything', 'Everything']]), ...DENSITY_ITEMS];
 const DITHER_ITEMS = [MODE_ITEM,
     Object.assign(C_('ddither', 'Dither type', IC.grid, [['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
-    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddsize', 'Dot size', IC.size, 1, 12, 1), S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('ddpal', 'Use palette', IC.palette),
+    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), SCALE_ITEM, S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('ddpal', 'Use palette', IC.palette),
     ...DENSITY_ITEMS];
 const MARTENS_ITEMS = [MODE_ITEM,
     C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical'], ['d', 'Diagonal']]),
     when(S_('mangle', 'Angle', IC.ruler, 5, 85, 1), () => v.mdir === 'd'),
-    S_('mpitch', 'Line spacing', IC.width, 3, 48, 1), S_('mlevels', 'Thicknesses', IC.levels, 2, 6, 1),
+    SCALE_ITEM, S_('mlevels', 'Thicknesses', IC.levels, 2, 6, 1),
     S_('mthresh', 'Threshold', IC.contrast, 0, 0.95, 0.01), S_('mfull', 'Full at', IC.sun, 0.05, 1, 0.01),
     S_('msize', 'Max thickness', IC.size, 0.4, 2.2, 0.01),
-    S_('mseg', 'Segment length', IC.bars, 1, 8, 0.1), S_('mstagger', 'Stagger', IC.offset, 0, 1, 0.01)];
+    S_('mseg', 'Segment length', IC.bars, 1, 8, 0.1), S_('mstagger', 'Stagger', IC.offset, 0, 1, 0.01), ...DENSITY_ITEMS];
 
 const PALETTES = [
   ['#0E5A3A', '#5E4BA6', '#8FCDBE', '#CDE9F0'], ['#0F8A6E', '#D9A21B', '#F3D9C4', '#FFFFFF'], ['#0B4F37', '#E0262B', '#7BA7BC', '#C8E39A'],
@@ -879,7 +886,7 @@ function randomPalette() {
 function randomShapes() {
   const pick = a => a[Math.floor(Math.random() * a.length)];
   v.sset = pick(['mixed', 'mixed', 'dot', 'square', 'diamond', 'hline', 'vbar', 'cross', 'triangle', 'arrow', 'ring', 'x']);
-  v.cell = 6 + Math.floor(Math.random() * 18);
+  v.scale = 6 + Math.floor(Math.random() * 18);
   v.ssize = +(0.5 + Math.random() * 0.6).toFixed(2);
   v.halftone = +(Math.random() * 0.8).toFixed(2);
   v.sby = Math.random() < 0.5 ? 'tone' : 'rows';
@@ -1329,12 +1336,12 @@ function vectorLayers(W, H) {
   patternSource(W, H);
   const S = sctx.getImageData(0, 0, W, H).data, u = Math.max(W, H) / 850;
   if (v.zmode === 'off') return [{ clip: null, G: shapeGeometry(W, H, u, S) }];
-  const { rects, L } = zoneRects(W, H), keep = v.cell, out = [];
+  const { rects, L } = zoneRects(W, H), keep = v.scale, out = [];
   for (const l of [...new Set(rects.map(z => z[4]))]) {
-    v.cell = keep * (L > 1 ? 1 + (v.zrange - 1) * l / (L - 1) : 1);
+    v.scale = keep * (L > 1 ? 1 + (v.zrange - 1) * l / (L - 1) : 1);
     out.push({ clip: rects.filter(z => z[4] === l), G: shapeGeometry(W, H, u, S) });
   }
-  v.cell = keep;
+  v.scale = keep;
   return out;
 }
 const n2 = x => +x.toFixed(2);
@@ -1494,6 +1501,13 @@ function applyPreset(p) {
   const { __seed, __palette, __paletteSrc, ...rest } = p.state;
   Object.assign(v, rest);
   // Presets from before Grain went global kept noise per mode
+  if (rest.scale === undefined) {
+    const m = rest.mode, old = m === 'shapes' ? rest.cell : m === 'glyph' ? rest.gcell : m === 'martens' ? rest.mpitch : m === 'dither' ? rest.ddsize * 5 : m === 'weave' ? rest.pitch / 0.7 : undefined;
+    v.scale = Number.isFinite(old) ? Math.round(old) : D0.scale;
+    // Glyph kept its own size/tone/mix, and its size shared a key with Glow size
+    if (m === 'glyph' && rest.ghalf !== undefined) { v.halftone = rest.ghalf; v.jitter = rest.gjitter; if (rest.gsize <= 1.3) v.ssize = rest.gsize; }
+  }
+  if (!(v.gsize >= 2)) v.gsize = D0.gsize;
   if (rest.invert === undefined) v.invert = !!((rest.mode === 'glyph' && rest.ginvert) || (rest.mode === 'martens' && rest.minvert));
   if (rest.grain === undefined) v.grain = (rest.mode === 'weave' ? rest.noise : rest.mode === 'shapes' ? rest.snoise : 0) || 0;
   if (v.mode === 'martens' && !MARTENS_ON) v.mode = 'weave';
