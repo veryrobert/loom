@@ -440,6 +440,11 @@ function grainPass(O) {
   const nr = mulberry(seed * 31 + 5);
   for (let i = 0; i < O.length; i += 4) { const n = (nr() - 0.5) * 2 * v.grain; O[i] += n; O[i + 1] += n; O[i + 2] += n; }
 }
+// With a dither on, grain goes over the finished dots as visible texture rather than being dithered away
+function grainFinish(W, H) {
+  if (!(v.grain > 0) || !W || !H) return;
+  const d = fctx.getImageData(0, 0, W, H); grainPass(d.data); fctx.putImageData(d, 0, 0);
+}
 // The Dither tab as a finish over the treated layer — Pixel (internally 'weave') dithers inside its own pipeline instead
 function ditherFinish(W, H, u) {
   if (v.dither === 'off' || !W || !H) return;
@@ -447,7 +452,7 @@ function ditherFinish(W, H, u) {
 }
 function renderShapes(W, H, g, u, live) {
   drawSource(W, H);
-  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.sbarw, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.grain, v.jitter, v.stone, v.mode, v.gset, v.ginvert, v.minvert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
+  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.sbarw, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.grain, v.dither, v.jitter, v.stone, v.mode, v.gset, v.ginvert, v.minvert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
   let base;
   if (live && cache && cache.pkey === pkey) base = cache.P;
   else {
@@ -463,7 +468,7 @@ function renderShapes(W, H, g, u, live) {
       for (const o of ops) if (o[0] === 't') { tctx.font = `700 ${Math.max(4, o[3] * 1.3).toFixed(1)}px Inter, "Helvetica Neue", Arial, sans-serif`; tctx.fillText(o[4], o[1], o[2]); }
     }
     const O = tctx.getImageData(0, 0, W, H).data;
-    grainPass(O);
+    if (v.dither === 'off') grainPass(O);
     base = { O };
     cache = live ? { pkey, P: base } : null;
   }
@@ -475,6 +480,7 @@ function renderShapes(W, H, g, u, live) {
   tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
   fin.width = W; fin.height = H; fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; fctx.drawImage(tmp, 0, 0);
   ditherFinish(W, H, u);
+  if (v.dither !== 'off') grainFinish(W, H);
   if (v.blend !== 'none' && v.mix > 0) { fctx.globalCompositeOperation = v.blend; fctx.globalAlpha = v.mix; fctx.drawImage(src, 0, 0); fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; }
   g.drawImage(adjustedSource(W, H), 0, 0);
   for (const [qx, qy, qw, qh] of regions(W, H)) { const w2 = Math.min(qw, W - qx), h2 = Math.min(qh, H - qy); if (w2 > 0 && h2 > 0) g.drawImage(fin, qx, qy, w2, h2, qx, qy, w2, h2); }
@@ -490,8 +496,8 @@ function renderDither(W, H, g, u, live) {
   else {
     O = sctx.getImageData(0, 0, W, H).data.slice();
     adjustPass(O);
-    grainPass(O);
     dither(O, W, H, u, palette.map(hex2rgb), { type: v.ddither, levels: v.ddlevels, size: v.ddsize, usePal: v.ddpal, vary: v.ddvary });
+    grainPass(O);
     if (live) cache = { pkey, O: O.slice() };
   }
   tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
@@ -576,7 +582,7 @@ function render(W, H, target) {
   const S = sctx.getImageData(0, 0, W, H).data;
   const rx = 0, ry = 0, RW = W, RH = H;
   const rnd = mulberry(seed), nrnd = mulberry(seed * 31 + 5);
-  const cols = v.cols, rows = v.rows, pitch = v.pitch * u, depth = v.depth, noise = v.grain, det = v.detail;
+  const cols = v.cols, rows = v.rows, pitch = v.pitch * u, depth = v.depth, noise = v.dither === 'off' ? v.grain : 0, det = v.detail;
   const usePal = v.cmode === 'palette' && palette.length, pal = palette.map(hex2rgb), palM = (paletteSrc.length === palette.length ? paletteSrc : palette).map(hex2rgb);
   const cx = Array.from({ length: cols + 1 }, (_, i) => Math.round(i * RW / cols));
   const hs = Array.from({ length: rows }, () => 1 + (rnd() * 2 - 1) * v.uneven * 0.75), hsum = hs.reduce((a, b) => a + b, 0);
@@ -636,6 +642,7 @@ function render(W, H, target) {
   fin.width = RW; fin.height = RH;
   fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1;
   fctx.drawImage(tmp, 0, 0);
+  if (v.dither !== 'off') grainFinish(RW, RH);
   if (v.accents > 0 && cols > 1) {
     const edges = Array.from({ length: cols - 1 }, (_, i) => i + 1);
     for (let i = edges.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [edges[i], edges[j]] = [edges[j], edges[i]]; }
