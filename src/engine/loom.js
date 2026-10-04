@@ -836,34 +836,32 @@ const DENSITY_ITEMS = [
     when(S_('zones', 'Zones', IC.zones, 2, 12, 1), densityOn), when(S_('zrange', 'Density range', IC.zrange, 1.5, 6, 0.1), densityOn),
     when(C_('zorder', 'Order', IC.zorder, [['coarse', 'Coarse first'], ['fine', 'Fine first'], ['random', 'Random']]), densityOn)];
 const SCALE_ITEM = S_('scale', 'Scale', IC.cell, 3, 120, 1);
-const WEAVE_ITEMS = [MODE_ITEM, SCALE_ITEM,
+const WEAVE_ITEMS = [MODE_ITEM,
     S_('pcw', 'Column width', IC.cols, 0.25, 8, 0.05), S_('prh', 'Row height', IC.rows, 0.25, 8, 0.05), S_('merge', 'Merge', IC.merge, 0, 0.9, 0.01), S_('uneven', 'Uneven rows', IC.uneven, 0, 1, 0.01),
     S_('depth', 'Stripe depth', IC.depth, 0, 1, 0.01), T_('offset', 'Offset stripes', IC.offset),
-    S_('accents', 'Tick rules', IC.ruler, 0, 12, 1), ...DENSITY_ITEMS];
+    S_('accents', 'Tick rules', IC.ruler, 0, 12, 1)];
 const SSET_ITEM = Object.assign(C_('sset', 'Shapes', IC.shapes, [['mixed', 'Mixed'], ['dot', 'Dots'], ['square', 'Squares'], ['diamond', 'Diamonds'], ['hline', 'Lines'], ['vbar', 'Bars'], ['cross', 'Crosses'], ['triangle', 'Triangles'], ['arrow', 'Arrows'], ['ring', 'Rings'], ['x', 'Diagonal cross']]));
 const SHAPE_ITEMS = [MODE_ITEM, SSET_ITEM,
-    SCALE_ITEM, S_('ssize', 'Shape size', IC.dot, 0.1, 1.3, 0.01),
+    S_('ssize', 'Shape size', IC.dot, 0.1, 1.3, 0.01),
     when(S_('sbarw', 'Bar width', IC.width, 0.5, 3, 0.01), () => ['hline', 'vbar', 'mixed'].includes(v.sset)), S_('halftone', 'Halftone', IC.halftone, 0, 1, 0.01),
     C_('sby', 'Shape by', IC.bands, [['tone', 'Tone'], ['rows', 'Rows']]), when(S_('bandRows', 'Band height', IC.rows, 1, 24, 1), () => v.sby === 'rows'),
     S_('jitter', 'Shape mix', IC.wind, 0, 1, 0.01),
-    Object.assign(A_('Random settings', IC.dice, randomShapes), { flash: false }),
-    ...DENSITY_ITEMS];
+    Object.assign(A_('Random settings', IC.dice, randomShapes), { flash: false })];
 const GLYPH_ITEMS = [MODE_ITEM,
     // Size, Tone to size and Mix are Shapes' own settings (ssize / halftone / jitter), shared both ways
-    SCALE_ITEM, S_('ssize', 'Glyph size', IC.size, 0.1, 1.3, 0.01),
+    S_('ssize', 'Glyph size', IC.size, 0.1, 1.3, 0.01),
     S_('halftone', 'Tone to size', IC.halftone, 0, 1, 0.01), S_('jitter', 'Mix', IC.dice, 0, 1, 0.01),
-    C_('gset', 'Glyphs', IC.shapes, [['classic', 'Classic'], ['geometric', 'Geometric'], ['stars', 'Stars'], ['arrows', 'Arrows'], ['curves', 'Curves'], ['money', 'Money'], ['everything', 'Everything']]), ...DENSITY_ITEMS];
+    C_('gset', 'Glyphs', IC.shapes, [['classic', 'Classic'], ['geometric', 'Geometric'], ['stars', 'Stars'], ['arrows', 'Arrows'], ['curves', 'Curves'], ['money', 'Money'], ['everything', 'Everything']])];
 const DITHER_ITEMS = [MODE_ITEM,
     Object.assign(C_('ddither', 'Dither type', IC.grid, [['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
-    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), SCALE_ITEM, S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('ddpal', 'Use palette', IC.palette),
-    ...DENSITY_ITEMS];
+    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('ddpal', 'Use palette', IC.palette)];
 const MARTENS_ITEMS = [MODE_ITEM,
     C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical'], ['d', 'Diagonal']]),
     when(S_('mangle', 'Angle', IC.ruler, 5, 85, 1), () => v.mdir === 'd'),
-    SCALE_ITEM, S_('mlevels', 'Thicknesses', IC.levels, 2, 6, 1),
+    S_('mlevels', 'Thicknesses', IC.levels, 2, 6, 1),
     S_('mthresh', 'Threshold', IC.contrast, 0, 0.95, 0.01), S_('mfull', 'Full at', IC.sun, 0.05, 1, 0.01),
     S_('msize', 'Max thickness', IC.size, 0.4, 2.2, 0.01),
-    S_('mseg', 'Segment length', IC.bars, 1, 8, 0.1), S_('mstagger', 'Stagger', IC.offset, 0, 1, 0.01), ...DENSITY_ITEMS];
+    S_('mseg', 'Segment length', IC.bars, 1, 8, 0.1), S_('mstagger', 'Stagger', IC.offset, 0, 1, 0.01)];
 
 const PALETTES = [
   ['#0E5A3A', '#5E4BA6', '#8FCDBE', '#CDE9F0'], ['#0F8A6E', '#D9A21B', '#F3D9C4', '#FFFFFF'], ['#0B4F37', '#E0262B', '#7BA7BC', '#C8E39A'],
@@ -934,6 +932,8 @@ const CROP_REST = [
 function CROP_ITEMS() { return [CROP_REST[0], ...SPLIT_ITEMS(), ...CROP_REST.slice(1)]; }
 const TABS = [
   { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
+  // Scale: one size for every pattern, plus Density zones that vary it across the image (hidden for None)
+  { id: 'scale', label: 'Scale', icon: IC.cell, items: [SCALE_ITEM, ...DENSITY_ITEMS] },
   // Adjust: the photo itself. Texture: what's laid over the result (grain, glow, blend, dither finish)
   { id: 'adjust', label: 'Adjust', icon: IC.adjust, items: [
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
@@ -950,7 +950,7 @@ const TABS = [
       .map(it => when(it, () => v.mode !== 'dither' && v.dither !== 'off'))] },
   { id: 'crop', label: 'Crop', icon: IC.crop, get items() { return CROP_ITEMS(); } },
 ];
-let tabId = null; const selIdx = { adjust: 0, colour: 0, pattern: 0, texture: 0, crop: 0 };
+let tabId = null; const selIdx = { adjust: 0, colour: 0, pattern: 0, scale: 0, texture: 0, crop: 0 };
 const curTab = () => TABS.find(t => t.id === tabId);
 const tick = () => curTab().items.filter(it => (it.t === 's' || it.t === 'c') && isShown(it));
 const corner = () => curTab().items.filter(it => (it.t === 'a' || it.t === 't' || it.t === 'h' || it.t === 'k') && isShown(it));
@@ -963,7 +963,8 @@ function ringSVG(n) {
 }
 function drawTabs() {
   const nav = $('tabs'); nav.innerHTML = '';
-  TABS.forEach(t => {
+  if (v.mode === 'none' && tabId === 'scale') tabId = null;
+  TABS.filter(t => !(v.mode === 'none' && t.id === 'scale')).forEach(t => {
     const b = document.createElement('button'); b.className = 'tab'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', t.id === tabId);
     b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => {
       // Pattern always lands on the Mode overview: tapping it inside a pattern's settings goes back there,
