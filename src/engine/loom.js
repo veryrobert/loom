@@ -1163,6 +1163,7 @@ const IC = {
   diag: I("<path d=\"M3 21 21 3\" />  <path d=\"M3 12 12 3\" />  <path d=\"m12 21 9-9\" />"),
   bleed: I("<circle cx=\"12\" cy=\"12\" r=\"3\" />  <circle cx=\"12\" cy=\"12\" r=\"6.5\" stroke-dasharray=\"1.5 2.5\" />  <circle cx=\"12\" cy=\"12\" r=\"10\" stroke-dasharray=\"1 4\" />"),
   newcanvas: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M12 8v8\" />  <path d=\"M8 12h8\" />"),
+  clear: I("<path d=\"M18 6 6 18\" />  <path d=\"m6 6 12 12\" />"),
   library: I("<path d=\"m16 6 4 14\" />  <path d=\"M12 6v14\" />  <path d=\"M8 8v12\" />  <path d=\"M4 4v16\" />"),
 };
 $('vlib').innerHTML = IC.library;
@@ -1749,6 +1750,20 @@ $('vreset').onclick = () => {
   drawAll(); schedule(); flash('Settings reset');
 };
 $('vupload').onclick = () => $('file').click();
+// Clear: close the photo, video or canvas and go back to the start screen. Settings stay (they carry over to
+// whatever's opened next) and the photo stays in Recents, so nothing is lost
+$('vclear').innerHTML = IC.clear;
+$('vclear').onclick = () => {
+  if (recording) return;
+  if (vid) { vid.pause(); vid.remove(); vid = null; }
+  ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
+  img = null; imgId++; cache = null; currentFileId = null; canvasKey = ''; tabId = null; builtTab = null; rawPreview = false; comparing = false; picking = false;
+  clearTimeout(sessionT); try { localStorage.removeItem(SESSION_KEY); } catch {}
+  document.body.classList.remove('menuopen', 'hideui');
+  ['dock', 'vbar', 'topL'].forEach(id => $(id).classList.add('hidden'));
+  out.width = out.width; toast('');
+  $('empty').hidden = false; drawRecent(); drawAll();
+};
 $('vdown').onclick = openExport;
 $('vplay').onclick = () => { if (!vid || recording) return; vid.paused ? vid.play() : vid.pause(); };
 let rec = null, chunks = [];
