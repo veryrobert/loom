@@ -228,3 +228,5 @@ body.booting .empty > *{opacity:0; animation:none}
   background:var(--glass-strong); -webkit-backdrop-filter:blur(16px); backdrop-filter:blur(16px); pointer-events:none}
 .loader[hidden]{display:none}
 @media (prefers-reduced-motion: reduce){ .weave path{animation:none; stroke-dashoffset:0} }
+
+.item.btn-hidden{display:none}

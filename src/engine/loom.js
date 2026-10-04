@@ -33,7 +33,7 @@ const v = {
   // (×0.7) and Dither mode dots (×0.2); density zones vary it across the image
   mode: 'none', scale: 10, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
   mdir: 'h', mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30,
-  gltype: 'reeded', gldir: 'v', glrefract: 0.8, glfrost: 0.15, glhigh: 0.45, glshadow: 0.4, glfringe: 0.35, glirreg: false, glsurface: 0.45,
+  gltype: 'reeded', gldir: 'v', glrefract: 0.8, glfrost: 0.15, glhigh: 0.45, glshadow: 0.4, glfringe: 0.35, glirreg: false, glsurface: 0.45, glwidth: 1,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
 };
@@ -520,7 +520,7 @@ function renderNone(W, H, g, u) {
 // an edge highlight, a soft shadow and a fine seam. Scale sets rib width ----------
 function renderGlass(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['glass', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glsurface, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['glass', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glsurface, v.glwidth, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
@@ -543,7 +543,7 @@ function renderGlass(W, H, g, u, live) {
 function glassPass(S, W, H, u) {
   const vert = v.gldir !== 'h', nC = vert ? W : H, nA = vert ? H : W; // C: across the ribs, A: along them
   const at = vert ? (a, c) => (a * W + c) * 4 : (a, c) => (c * W + a) * 4;
-  const type = v.gltype, rib = Math.max(3, v.scale * 6 * u), rnd = mulberry(seed * 53 + 11);
+  const type = v.gltype, rib = Math.max(3, v.scale * 6 * u * v.glwidth), rnd = mulberry(seed * 53 + 11);
   // Per position across the ribs: where R, G and B sample from, and how the glass lights it
   const sR = new Int32Array(nC), sG = new Int32Array(nC), sB = new Int32Array(nC), mul = new Float32Array(nC), add = new Float32Array(nC);
   const clampC = c => c < 0 ? Math.min(nC - 1, -c) : c >= nC ? Math.max(0, 2 * nC - 2 - c) : c; // mirror at the edges
@@ -861,6 +861,12 @@ const IC = {
   rows: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M21 9H3\" />  <path d=\"M21 15H3\" />"),
   merge: I("<path d=\"M12 21v-6\" />  <path d=\"M12 9V3\" />  <path d=\"M3 15h18\" />  <path d=\"M3 9h18\" />  <rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />"),
   uneven: I("<rect width=\"20\" height=\"6\" x=\"2\" y=\"4\" rx=\"2\" />  <rect width=\"20\" height=\"6\" x=\"2\" y=\"14\" rx=\"2\" />"),
+  ribs: I("<rect width=\"5\" height=\"18\" x=\"3\" y=\"3\" rx=\"2.5\" />  <rect width=\"5\" height=\"18\" x=\"9.5\" y=\"3\" rx=\"2.5\" />  <rect width=\"5\" height=\"18\" x=\"16\" y=\"3\" rx=\"2.5\" />"),
+  stagger: I("<path d=\"M6 3v11\" />  <path d=\"M12 8v13\" />  <path d=\"M18 4v9\" />"),
+  fill: I("<path d=\"m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z\" />  <path d=\"m5 2 5 5\" />  <path d=\"M2 13h15\" />  <path d=\"M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z\" />"),
+  texture: I("<path d=\"M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1\" />  <path d=\"M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1\" />  <path d=\"M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1\" />"),
+  scaling: I("<path d=\"M21 3 9 15\" />  <path d=\"M12 3H3v18h18v-9\" />  <path d=\"M16 3h5v5\" />  <path d=\"M14 15H9v-5\" />"),
+  area: I("<path d=\"M3 7V5a2 2 0 0 1 2-2h2\" />  <path d=\"M17 3h2a2 2 0 0 1 2 2v2\" />  <path d=\"M21 17v2a2 2 0 0 1-2 2h-2\" />  <path d=\"M7 21H5a2 2 0 0 1-2-2v-2\" />  <rect width=\"10\" height=\"10\" x=\"7\" y=\"7\" rx=\"1\" />"),
   shuffle: I("<path d=\"m18 14 4 4-4 4\" />  <path d=\"m18 2 4 4-4 4\" />  <path d=\"M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22\" />  <path d=\"M2 6h1.972a4 4 0 0 1 3.6 2.2\" />  <path d=\"M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45\" />"),
   width: I("<path d=\"m18 8 4 4-4 4\" />  <path d=\"M2 12h20\" />  <path d=\"m6 8-4 4 4 4\" />"),
   depth: I("<path d=\"M2 12q2.5 2 5 0t5 0 5 0 5 0\" />  <path d=\"M2 19q2.5 2 5 0t5 0 5 0 5 0\" />  <path d=\"M2 5q2.5 2 5 0t5 0 5 0 5 0\" />"),
@@ -917,7 +923,8 @@ const A_ = (label, icon, fn) => ({ t: 'a', label, icon, fn });
 const FORMATS = [['image', 'Original', IC.original], ['screen', 'Full screen', IC.fullscreen], ['1', '1:1'], ['0.8', '4:5'], ['0.75', '3:4'], ['0.6667', '2:3'], ['0.5625', '9:16'], ['1.7778', '16:9'], ['1.3333', '4:3'], ['1.5', '3:2'], ['0.7071', 'A4'], ['1.4142', 'A4 wide']];
 // Switch to hide Martens from the Mode picker without removing it
 const MARTENS_ON = true;
-const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : []), ['glass', 'Glass']]), { onPick: () => {
+// Pattern list. Its round button is hidden: tapping the Pattern tab is how you get back to it
+const MODE_ITEM = Object.assign(C_('mode', 'Pattern', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : []), ['glass', 'Glass']]), { hideButton: true, onPick: () => {
   builtTab = null; selIdx.pattern = 0; selIdx.colour = 0; settleArt();
   primeMode();
 } });
@@ -945,7 +952,7 @@ const DENSITY_ITEMS = [
     C_('zmode', 'Density', IC.zmode, [['off', 'Off'], ['stack', 'Stack'], ['grid', 'Grid']]),
     when(S_('zones', 'Zones', IC.zones, 2, 12, 1), densityOn), when(S_('zrange', 'Density range', IC.zrange, 1.5, 6, 0.1), densityOn),
     when(C_('zorder', 'Order', IC.zorder, [['coarse', 'Coarse first'], ['fine', 'Fine first'], ['random', 'Random']]), densityOn)];
-const SCALE_ITEM = S_('scale', 'Scale', IC.cell, 3, 120, 1);
+const SCALE_ITEM = S_('scale', 'Scale', IC.scaling, 3, 120, 1);
 const WEAVE_ITEMS = [MODE_ITEM,
     S_('pcw', 'Column width', IC.cols, 0.25, 8, 0.05), S_('prh', 'Row height', IC.rows, 0.25, 8, 0.05), S_('merge', 'Merge', IC.merge, 0, 0.9, 0.01), S_('uneven', 'Uneven rows', IC.uneven, 0, 1, 0.01),
     S_('depth', 'Stripe depth', IC.depth, 0, 1, 0.01), T_('offset', 'Offset stripes', IC.offset),
@@ -966,8 +973,9 @@ const DITHER_ITEMS = [MODE_ITEM,
     Object.assign(C_('ddither', 'Dither type', IC.grid, [['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
     S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('ddpal', 'Use palette', IC.palette)];
 const GLASS_ITEMS = [MODE_ITEM,
-    C_('gltype', 'Glass', IC.layout, [['reeded', 'Reeded'], ['fluted', 'Fluted'], ['frosted', 'Frosted']]),
+    C_('gltype', 'Glass', IC.ribs, [['reeded', 'Reeded'], ['fluted', 'Fluted'], ['frosted', 'Frosted']]),
     C_('gldir', 'Direction', IC.offset, [['v', 'Vertical'], ['h', 'Horizontal']]),
+    S_('glwidth', 'Ridge width', IC.width, 0.25, 4, 0.01),
     when(S_('glrefract', 'Refraction', IC.wind, 0, 1.5, 0.01), () => v.gltype !== 'frosted'),
     S_('glfrost', 'Frost', IC.glow, 0, 1, 0.01),
     when(S_('glhigh', 'Highlights', IC.sun, 0, 1, 0.01), () => v.gltype !== 'frosted'),
@@ -981,7 +989,7 @@ const MARTENS_ITEMS = [MODE_ITEM,
     S_('mlevels', 'Thicknesses', IC.levels, 2, 6, 1),
     S_('mthresh', 'Threshold', IC.contrast, 0, 0.95, 0.01), S_('mfull', 'Full at', IC.sun, 0.05, 1, 0.01),
     S_('msize', 'Max thickness', IC.size, 0.4, 2.2, 0.01),
-    S_('mseg', 'Segment length', IC.bars, 1, 8, 0.1), S_('mstagger', 'Stagger', IC.offset, 0, 1, 0.01)];
+    S_('mseg', 'Segment length', IC.bars, 1, 8, 0.1), S_('mstagger', 'Stagger', IC.stagger, 0, 1, 0.01)];
 
 const PALETTES = [
   ['#0E5A3A', '#5E4BA6', '#8FCDBE', '#CDE9F0'], ['#0F8A6E', '#D9A21B', '#F3D9C4', '#FFFFFF'], ['#0B4F37', '#E0262B', '#7BA7BC', '#C8E39A'],
@@ -1029,7 +1037,7 @@ const COLOUR_SHAPES = [
     C_('cmode', 'Colour from', IC.palette, [['image', 'Image'], ['palette', 'Image palette']]),
     C_('stone', 'Scheme', IC.tone, [['full', 'Full'], ['duo', 'Duotone'], ['mono', 'Mono']]),
     C_('ground', 'Background', IC.ground, [['darkest', 'Darkest'], ['lightest', 'Lightest'], ['custom', 'Custom'], ['image', 'Image']]),
-    when({ t: 'k', key: 'groundColor', label: 'Background colour', icon: IC.ground, onSet: () => { v.ground = 'custom'; } }, () => v.ground !== 'image'),
+    when({ t: 'k', key: 'groundColor', label: 'Background colour', icon: IC.fill, onSet: () => { v.ground = 'custom'; } }, () => v.ground !== 'image'),
     ...COLOUR_COMMON];
 const COLOUR_GLYPH = COLOUR_COMMON;
 const COLOUR_MARTENS = COLOUR_COMMON;
@@ -1040,7 +1048,7 @@ const PATCH_ITEMS = [S_('pcover', 'Coverage', IC.cover, 0.05, 0.95, 0.01), S_('p
   S_('mscale', 'Mask scale', IC.mscale, 0.25, 4, 0.01),
   T_('maskMove', 'Move mask', IC.move),
   Object.assign(A_('Reset mask', IC.maskreset, () => { v.mscale = 1; v.mx = v.my = 0; }), { left: true }),
-  A_('Shuffle patches', IC.shuffle, () => { pseed = Math.floor(Math.random() * 1e6); })];
+  A_('Shuffle patches', IC.dice, () => { pseed = Math.floor(Math.random() * 1e6); })];
 let pseed = 3;
 function SPLIT_ITEMS() { return v.split === 'patch' ? [SPLIT_CHOICE, ...PATCH_ITEMS] : v.split === 1 ? [SPLIT_CHOICE] : [SPLIT_CHOICE, SIDE_ITEM]; }
 const COMPARE_ITEM = { t: 'h', label: 'Hold to compare', icon: IC.compare, left: true };
@@ -1058,7 +1066,7 @@ const TABS = [
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
     S_('sat', 'Saturation', IC.drop, 0, 2, 0.01), S_('hue', 'Hue', IC.hue, -180, 180, 1)] },
   { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'glass' ? COLOUR_COMMON : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
-  { id: 'texture', label: 'Texture', icon: IC.noise, items: [
+  { id: 'texture', label: 'Texture', icon: IC.texture, items: [
     S_('grain', 'Grain', IC.noise, 0, 80, 1),
     S_('glow', 'Glow', IC.glow, 0, 2, 0.01), when(S_('gsize', 'Glow size', IC.radius, 2, 60, 1), () => v.glow > 0),
     C_('blend', 'Blend', IC.blend, [['none', 'Off'], ['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['hard-light', 'Hard light'], ['color', 'Colour'], ['luminosity', 'Luminosity'], ['difference', 'Difference']]),
@@ -1069,7 +1077,7 @@ const TABS = [
       .map(it => when(it, () => v.mode !== 'dither' && v.dither !== 'off'))] },
   // Scale: one size for every pattern, plus Density zones that vary it across the image (hidden for None)
   { id: 'scale', label: 'Scale', icon: IC.cell, items: [SCALE_ITEM, ...DENSITY_ITEMS] },
-  { id: 'mask', label: 'Mask', icon: IC.split, get items() { return MASK_ITEMS(); } },
+  { id: 'mask', label: 'Mask', icon: IC.area, get items() { return MASK_ITEMS(); } },
   // Crop isn't in the bar — the top-right crop button opens it
   { id: 'crop', label: 'Crop', icon: IC.crop, hidden: true, items: CROP_ITEMS },
 ];
@@ -1135,7 +1143,7 @@ function drawItems() {
   if (builtTab !== tabId) {
     box.innerHTML = '';
     tick().forEach((it, i) => {
-      const b = document.createElement('button'); b.className = 'item glass'; b.setAttribute('aria-label', it.label);
+      const b = document.createElement('button'); b.className = 'item glass' + (it.hideButton ? ' btn-hidden' : ''); b.setAttribute('aria-label', it.label);
       if (it.t === 'h') {
         b.addEventListener('pointerdown', () => { comparing = true; schedule(); });
         ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => { if (comparing) { comparing = false; schedule(); } }));
@@ -1160,7 +1168,7 @@ function drawItems() {
     raf = requestAnimationFrame(() => {
       raf = 0; if (scrollLock || !tabId) return;
       const mid = box.scrollLeft + box.clientWidth / 2; let best = 0, bd = 1e9;
-      [...box.children].forEach((b, i) => { const d = Math.abs(b.offsetLeft + b.offsetWidth / 2 - mid); if (d < bd) { bd = d; best = i; } });
+      [...box.children].forEach((b, i) => { if (b.classList.contains('btn-hidden')) return; const d = Math.abs(b.offsetLeft + b.offsetWidth / 2 - mid); if (d < bd) { bd = d; best = i; } });
       if (best !== selIdx[tabId]) { selIdx[tabId] = best; paintItems(); drawControl(); }
     });
   }, { passive: true });

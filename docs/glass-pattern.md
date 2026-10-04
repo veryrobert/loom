@@ -66,6 +66,7 @@ all share the same model:
 |---|---|---|
 | Glass | Reeded · Fluted · Frosted | Reeded |
 | Direction | Vertical · Horizontal | Vertical |
+| Ridge width | 0.25–4 × Scale | 1 |
 | Refraction | 0–1.5 | 0.8 |
 | Frost | 0–1 | 0.15 |
 | Highlights | 0–1 | 0.45 |
