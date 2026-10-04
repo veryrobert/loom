@@ -776,6 +776,11 @@ const IC = {
   split: I("<path d=\"M12 2v20\" />  <path d=\"M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3\" />  <path d=\"M8 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3\" />"),
   side: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M9 3v18\" />"),
   zoom: I("<circle cx=\"11\" cy=\"11\" r=\"8\" />  <line x1=\"21\" x2=\"16.65\" y1=\"21\" y2=\"16.65\" />  <line x1=\"11\" x2=\"11\" y1=\"8\" y2=\"14\" />  <line x1=\"8\" x2=\"14\" y1=\"11\" y2=\"11\" />"),
+  full: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />"),
+  aleft: I("<path d=\"m12 19-7-7 7-7\" />  <path d=\"M19 12H5\" />"),
+  aright: I("<path d=\"M5 12h14\" />  <path d=\"m12 5 7 7-7 7\" />"),
+  aup: I("<path d=\"m5 12 7-7 7 7\" />  <path d=\"M12 19V5\" />"),
+  adown: I("<path d=\"M12 5v14\" />  <path d=\"m19 12-7 7-7-7\" />"),
   original: I("<path d=\"M9 14 4 9l5-5\" />  <path d=\"M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11\" />"),
   fullscreen: I("<path d=\"M8 3H5a2 2 0 0 0-2 2v3\" />  <path d=\"M21 8V5a2 2 0 0 0-2-2h-3\" />  <path d=\"M3 16v3a2 2 0 0 0 2 2h3\" />  <path d=\"M16 21h3a2 2 0 0 0 2-2v-3\" />"),
   reset: I("<path d=\"M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8\" />  <path d=\"M3 3v5h5\" />"),
@@ -921,8 +926,8 @@ const COLOUR_SHAPES = [
 const COLOUR_GLYPH = COLOUR_COMMON;
 const COLOUR_MARTENS = COLOUR_COMMON;
 const COLOUR_DITHER = COLOUR_COMMON;
-const SPLIT_CHOICE = Object.assign(C_('split', 'Treated area', IC.split, [[1, 'Full'], ['patch', 'Patches'], [0.5, 'Half'], [1 / 3, 'Third'], [0.25, 'Quarter'], [2 / 3, 'Two thirds']]), { onPick: () => { builtTab = null; } });
-const SIDE_ITEM = C_('side', 'Treat from', IC.side, [['left', 'Left'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom']]);
+const SPLIT_CHOICE = Object.assign(C_('split', 'Treated area', IC.split, [[1, 'Full', IC.full], [2 / 3, '⅔'], [0.5, '½'], [1 / 3, '⅓'], [0.25, '¼'], ['patch', 'Patches', IC.patch]]), { onPick: () => { builtTab = null; } });
+const SIDE_ITEM = C_('side', 'Treat from', IC.side, [['left', 'Left', IC.aleft], ['right', 'Right', IC.aright], ['top', 'Top', IC.aup], ['bottom', 'Bottom', IC.adown]]);
 const PATCH_ITEMS = [S_('pcover', 'Coverage', IC.cover, 0.05, 0.95, 0.01), S_('psize', 'Patch size', IC.patch, 1, 10, 1), S_('pdepth', 'Mix of sizes', IC.zones, 0, 4, 1),
   S_('mscale', 'Mask scale', IC.mscale, 0.25, 4, 0.01),
   T_('maskMove', 'Move mask', IC.move),
