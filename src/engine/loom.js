@@ -1161,7 +1161,7 @@ function updateSelNum() { const it = curItem(), b = $('items').children[selIdx[t
 
 // ---------- chrome visibility ----------
 let idleT;
-const showUI = () => { document.body.classList.remove('hideui'); clearTimeout(idleT); idleT = setTimeout(() => { if (img && !tabId) document.body.classList.add('hideui'); }, 12000); };
+const showUI = () => { document.body.classList.remove('hideui'); clearTimeout(idleT); idleT = setTimeout(() => { if (img && !tabId && !document.body.classList.contains('menuopen') && $('callout').hidden) document.body.classList.add('hideui'); }, 12000); }; // never fade the controls away while the menu or copy/paste bubble is open
 ['pointerdown', 'pointermove', 'keydown', 'wheel'].forEach(ev => addEventListener(ev, e => { if (ev === 'pointermove' && e.pointerType === 'touch') return; showUI(); }, { passive: true }));
 const toast = t => { $('toast').textContent = t; $('toast').hidden = !t; };
 let flashT; const flash = t => { toast(t); clearTimeout(flashT); flashT = setTimeout(() => { if (!picking) toast(''); }, 1200); };
@@ -1550,7 +1550,7 @@ async function renderLibList() {
     const items = await listPresets();
     if (!items.length) return empty('No saved styles yet. Use the save button in the top bar to keep a look.');
     items.forEach(p => {
-      const media = () => { if (!p.thumb) return MODE_MARK[p.mode] || '◆'; const i = document.createElement('img'); i.src = p.thumb; i.alt = ''; return i; };
+      const media = () => { if (!p.thumb) return MODE_MARK[p.mode] || '◆'; const i = document.createElement('img'); i.alt = ''; i.onload = () => i.classList.add('ready'); i.src = p.thumb; return i; };
       box.append(galTile(media(), p.name, () => openGalView({
         media: media(), name: p.name, meta: modeName(p.mode) + ' · ' + new Date(p.createdAt).toLocaleDateString(),
         onHold: () => copyStyle({ mode: p.mode, state: p.state }, p.name),
