@@ -1738,7 +1738,7 @@ const PLAY = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke
 function paintVbar() {
   if (!vid) return;
   $('vplay').innerHTML = vid.paused ? PLAY : PAUSE; $('vplay').setAttribute('aria-label', vid.paused ? 'Play' : 'Pause');
-  $('vrec').innerHTML = recording ? STOP : REC; $('vrec').classList.toggle('on', recording); $('vrec').setAttribute('aria-label', recording ? 'Stop recording' : 'Record video');
+  $('vrec').innerHTML = recording ? STOP : REC; $('vrec').classList.toggle('on', recording); $('vrec').setAttribute('aria-label', recording ? 'Stop' : 'Record');
 }
 let resetArm = 0;
 $('vreset').onclick = () => {
