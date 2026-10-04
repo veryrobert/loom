@@ -703,15 +703,17 @@ function renderBlobs(W, H, g, u, live) {
     }
     const mol = v.blstyle === 'molecule';
     const hw = mol ? Math.max(0.6 * u, v.blneck * r * 0.3) : Math.max(0.5 * u, v.blneck * r * 0.8);
+    // Blobs' neck is a fillet: two circles of radius R, one each side of the link, that touch both dots and
+    // leave a waist of half-width hw. The bridge is the strip between the two touch points minus those fillet
+    // circles, so its sides curve smoothly into each dot (no flat or square shoulders)
+    const hwB = Math.min(hw, r * 0.92), R = (c * c / 4 + hwB * hwB - r * r) / (2 * (r - hwB)), hF = hwB + R, aT = (c / 2) * r / (r + R);
     // Distance to a link between corner dots a and b (always one cell long, along p or q). Molecule: a thin
-    // straight line. Blobs: a bridge whose half-width narrows from the dot radius at each end to hw at the
-    // middle along a parabola, giving the pinched, concave waist of the reference tiles
+    // straight line. Blobs: the filleted neck above
     const link = (px, py, ax, ay, bx, by) => {
-      const along = ax === bx ? (py - ay) / (by - ay) : (px - ax) / (bx - ax), s = ax === bx ? Math.abs(px - ax) : Math.abs(py - ay);
-      const t = Math.max(0, Math.min(1, along));
-      if (mol) return Math.hypot(s, (along - t) * c) - hw;
-      const m = (2 * t - 1) * (2 * t - 1);
-      return Math.max(s - (hw + (r - hw) * m), (Math.abs(along - 0.5) - 0.5) * c);
+      const A = ax === bx ? (py - ay) * Math.sign(by - ay) : (px - ax) * Math.sign(bx - ax), s = ax === bx ? Math.abs(px - ax) : Math.abs(py - ay);
+      if (mol) { const t = Math.max(0, Math.min(c, A)); return Math.hypot(s, A - t) - hw; }
+      const box = Math.max(Math.abs(A - c / 2) - (c / 2 - aT), s - hF);
+      return Math.max(box, R - Math.hypot(A - c / 2, s - hF));
     };
     const O = new Uint8ClampedArray(W * H * 4), inkC = inks.length ? inks : [ink];
     const dc = [0, 0, 0, 0];
