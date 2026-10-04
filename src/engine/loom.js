@@ -21,7 +21,7 @@ const v = {
   zoom: 1, panX: 0, panY: 0, format: 'image', split: 1, side: 'left', pcover: 0.5, psize: 4, pdepth: 2, mscale: 1, mx: 0, my: 0, maskMove: false, photoColour: true, exportLong: 'native',
   detail: 0, perstripe: true, cmode: 'palette', kcount: 7,
   bri: 1, con: 1, sat: 1, hue: 0, glow: 0, gsize: 10, blend: 'none', mix: 0.25,
-  merge: 0.3, uneven: 0.35, depth: 0, offset: true, accents: 0,
+  pcw: 1, prh: 1, merge: 0.3, uneven: 0.35, depth: 0, offset: true, accents: 0,
   // Grain is global (Adjust tab) — every mode adds it inside its own pipeline, before any dithering
   grain: 0, invert: false,
   dither: 'off', dlevels: 5, dsize: 2, dpal: false, dvary: 0,
@@ -598,7 +598,7 @@ function render(W, H, target) {
   if (v.mode === 'dither') return renderDither(W, H, g, u, live);
   if (v.mode === 'glyph') return renderGlyph(W, H, g, u, live);
   if (v.mode === 'martens') return renderMartens(W, H, g, u, live);
-  const pkey = JSON.stringify([W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.merge, v.uneven, v.scale, v.depth, v.offset, v.grain, v.dither, v.dlevels, v.dsize, v.dpal, v.dvary, v.invert, seed, imgId]);
+  const pkey = JSON.stringify([W, H, v.zoom, v.panX, v.panY, v.detail, v.perstripe, v.cmode, palette, v.kcount, v.pcw, v.prh, v.merge, v.uneven, v.scale, v.depth, v.offset, v.grain, v.dither, v.dlevels, v.dsize, v.dpal, v.dvary, v.invert, seed, imgId]);
   let P;
   if (live && cache && cache.pkey === pkey) P = cache.P;
   else {
@@ -607,8 +607,8 @@ function render(W, H, target) {
   const S = sctx.getImageData(0, 0, W, H).data;
   const rx = 0, ry = 0, RW = W, RH = H;
   const rnd = mulberry(seed), nrnd = mulberry(seed * 31 + 5);
-  // Pixel blocks are Scale-sized, like Shapes cells; Merge and Uneven rows vary them from there
-  const cols = Math.max(2, Math.round(W / (v.scale * u))), rows = Math.max(2, Math.round(H / (v.scale * u))), pitch = v.scale * 0.7 * u, depth = v.depth, noise = v.dither === 'off' ? v.grain : 0, det = v.detail;
+  // Pixel blocks are Scale-sized like Shapes cells, stretched by Column width / Row height; Merge and Uneven rows vary them
+  const cols = Math.max(2, Math.round(W / (v.scale * v.pcw * u))), rows = Math.max(2, Math.round(H / (v.scale * v.prh * u))), pitch = v.scale * 0.7 * u, depth = v.depth, noise = v.dither === 'off' ? v.grain : 0, det = v.detail;
   const usePal = v.cmode === 'palette' && palette.length, pal = palette.map(hex2rgb), palM = (paletteSrc.length === palette.length ? paletteSrc : palette).map(hex2rgb);
   const cx = Array.from({ length: cols + 1 }, (_, i) => Math.round(i * RW / cols));
   const hs = Array.from({ length: rows }, () => 1 + (rnd() * 2 - 1) * v.uneven * 0.75), hsum = hs.reduce((a, b) => a + b, 0);
@@ -837,7 +837,7 @@ const DENSITY_ITEMS = [
     when(C_('zorder', 'Order', IC.zorder, [['coarse', 'Coarse first'], ['fine', 'Fine first'], ['random', 'Random']]), densityOn)];
 const SCALE_ITEM = S_('scale', 'Scale', IC.cell, 3, 120, 1);
 const WEAVE_ITEMS = [MODE_ITEM, SCALE_ITEM,
-    S_('merge', 'Merge', IC.merge, 0, 0.9, 0.01), S_('uneven', 'Uneven rows', IC.uneven, 0, 1, 0.01),
+    S_('pcw', 'Column width', IC.cols, 0.25, 8, 0.05), S_('prh', 'Row height', IC.rows, 0.25, 8, 0.05), S_('merge', 'Merge', IC.merge, 0, 0.9, 0.01), S_('uneven', 'Uneven rows', IC.uneven, 0, 1, 0.01),
     S_('depth', 'Stripe depth', IC.depth, 0, 1, 0.01), T_('offset', 'Offset stripes', IC.offset),
     S_('accents', 'Tick rules', IC.ruler, 0, 12, 1), ...DENSITY_ITEMS];
 const SSET_ITEM = Object.assign(C_('sset', 'Shapes', IC.shapes, [['mixed', 'Mixed'], ['dot', 'Dots'], ['square', 'Squares'], ['diamond', 'Diamonds'], ['hline', 'Lines'], ['vbar', 'Bars'], ['cross', 'Crosses'], ['triangle', 'Triangles'], ['arrow', 'Arrows'], ['ring', 'Rings'], ['x', 'Diagonal cross']]));
@@ -1504,6 +1504,8 @@ function applyPreset(p) {
   if (rest.scale === undefined) {
     const m = rest.mode, old = m === 'shapes' ? rest.cell : m === 'glyph' ? rest.gcell : m === 'martens' ? rest.mpitch : m === 'dither' ? rest.ddsize * 5 : m === 'weave' ? 850 / ((rest.cols + rest.rows) / 2) : undefined;
     v.scale = Number.isFinite(old) ? Math.max(3, Math.min(120, Math.round(old))) : D0.scale;
+    // Pixel kept column/row counts: turn them into widths relative to that Scale
+    if (m === 'weave' && rest.cols && rest.rows) { v.pcw = Math.max(0.25, Math.min(8, 850 / rest.cols / v.scale)); v.prh = Math.max(0.25, Math.min(8, 850 / rest.rows / v.scale)); }
     // Glyph kept its own size/tone/mix, and its size shared a key with Glow size
     if (m === 'glyph' && rest.ghalf !== undefined) { v.halftone = rest.ghalf; v.jitter = rest.gjitter; if (rest.gsize <= 1.3) v.ssize = rest.gsize; }
   }
