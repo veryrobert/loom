@@ -1175,11 +1175,12 @@ function drawItems() {
 })();
 function drawControl() {
   const it = curItem(), title = $('title'), scrub = $('scrub'), chips = $('chips');
+  const prevLeft = chips.scrollLeft; // read before hiding, which resets the scroll to 0
   scrub.classList.add('hidden'); chips.classList.add('hidden');
   title.textContent = it.noTitle ? '' : it.label;
   if (it.t === 's') { scrub.classList.remove('hidden'); placeStrip(); }
   else if (it.t === 'c') {
-    const prevLeft = chips.scrollLeft, picked = chips._picked === it.key; chips._picked = null;
+    const picked = chips._picked === it.key; chips._picked = null;
     chips.classList.remove('hidden'); chips.innerHTML = '';
     it.opts.forEach(([val, name, icon]) => {
       const b = document.createElement('button'); b.className = 'chip'; b.setAttribute('aria-pressed', String(v[it.key]) === String(val));
