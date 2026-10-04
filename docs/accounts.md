@@ -10,7 +10,7 @@ fit in later, so today's code doesn't paint us into a corner.
   (`id: 'local'`). It is the one place the rest of the app asks "who is this?".
 - Every new record (saved style, uploaded photo, export) is tagged `ownerId: currentAccount().id`.
   Records saved before this have no `ownerId` and count as `local`.
-- The Gallery (Creations, Styles, Photos) reads through the storage modules only. Nothing in the UI
+- The Gallery (Patterns, Styles, Photos) reads through the storage modules only. Nothing in the UI
   touches IndexedDB directly, so its data source can change without UI rewrites.
 
 ## How sign-in would plug in

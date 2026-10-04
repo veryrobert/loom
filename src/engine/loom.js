@@ -1441,7 +1441,7 @@ function vectorFile(fmt, W, H) {
   return pdf;
 }
 
-// ---------- gallery: a full-screen grid of square tiles — Creations (your exports), Styles (saved
+// ---------- gallery: a full-screen masonry grid — Patterns (your exports), Styles (saved
 // looks) and Photos (uploaded sources). Replaces the old Library sheet; still opened from the Library button ----------
 const lib = { tab: 'downloads' };
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -1453,7 +1453,7 @@ $('vlib').onclick = openLibrary;
 $('libClose').onclick = closeLibrary;
 addEventListener('keydown', e => { if (e.key !== 'Escape' || $('library').classList.contains('hidden')) return; if (!$('galView').classList.contains('hidden')) closeGalView(); else closeLibrary(); });
 function drawLibrary() {
-  segment($('libSeg'), [['downloads', 'Creations'], ['presets', 'Styles'], ['files', 'Photos']], lib.tab, t => { lib.tab = t; drawLibrary(); });
+  segment($('libSeg'), [['downloads', 'Patterns'], ['presets', 'Styles'], ['files', 'Photos']], lib.tab, t => { lib.tab = t; drawLibrary(); });
   $('libSaveGroup').classList.toggle('hidden', lib.tab !== 'presets');
   renderLibList();
 }
@@ -1478,6 +1478,7 @@ async function renderLibList() {
       box.append(galTile(media(), p.name, () => openGalView({
         media: media(), name: p.name, meta: modeName(p.mode) + ' · ' + new Date(p.createdAt).toLocaleDateString(),
         actions: [['Use this look', () => { closeGalView(); applyPreset(p); }, true],
+          ['Duplicate', async () => { await savePreset(p.name + ' copy', p.mode, p.state, p.thumb); closeGalView(); renderLibList(); flash('Duplicated'); }],
           ['Rename', () => renameInView(p.name, async n => { await renamePreset(p.id, n); p.name = n; renderLibList(); })],
           ['Delete', async () => { await deletePreset(p.id); closeGalView(); renderLibList(); }]],
       })));
