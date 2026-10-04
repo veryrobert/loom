@@ -20,7 +20,7 @@ let paletteAuto = true;
 const v = {
   zoom: 1, panX: 0, panY: 0, format: 'image', split: 1, side: 'left', pcover: 0.5, psize: 4, pdepth: 2, mscale: 1, mx: 0, my: 0, maskMove: false, photoColour: true, exportLong: 'native',
   detail: 0, perstripe: true, cmode: 'palette', kcount: 7,
-  bri: 1, con: 1.15, sat: 1.25, hue: 0, glow: 0, gsize: 10, blend: 'none', mix: 0.25,
+  bri: 1, con: 1, sat: 1, hue: 0, glow: 0, gsize: 10, blend: 'none', mix: 0.25,
   cols: 6, rows: 8, merge: 0.3, uneven: 0.35, pitch: 7, depth: 0, offset: true, accents: 0,
   // Grain is global (Adjust tab) — every mode adds it inside its own pipeline, before any dithering
   grain: 0,
@@ -29,7 +29,7 @@ const v = {
   ddither: 'ordered', ddlevels: 2, ddsize: 2, ddpal: true, ddvary: 0,
   // Glyph mode = Glyph mix's look, on its own keys
   gcell: 9, gsize: 0.55, ghalf: 0.55, gjitter: 0.45, gset: 'classic', ginvert: false,
-  mode: 'shapes', cell: 12, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
+  mode: 'none', cell: 12, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
   mdir: 'h', mpitch: 10, mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30, minvert: false,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
@@ -487,6 +487,23 @@ function renderShapes(W, H, g, u, live) {
 }
 
 
+// ---------- none: no pattern — the photo itself, with the Adjust, Colour and Texture settings ----------
+function renderNone(W, H, g, u) {
+  drawSource(W, H);
+  const O = sctx.getImageData(0, 0, W, H).data;
+  if (v.photoColour && paletteShifted()) recolourPass(O);
+  adjustPass(O);
+  glowPass(O, W, H, u);
+  if (v.dither === 'off') grainPass(O);
+  tmp.width = W; tmp.height = H; tctx.putImageData(new ImageData(O, W, H), 0, 0);
+  fin.width = W; fin.height = H; fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; fctx.drawImage(tmp, 0, 0);
+  ditherFinish(W, H, u);
+  if (v.dither !== 'off') grainFinish(W, H);
+  if (v.blend !== 'none' && v.mix > 0) { fctx.globalCompositeOperation = v.blend; fctx.globalAlpha = v.mix; fctx.drawImage(src, 0, 0); fctx.globalCompositeOperation = 'source-over'; fctx.globalAlpha = 1; }
+  g.drawImage(adjustedSource(W, H), 0, 0);
+  for (const [qx, qy, qw, qh] of regions(W, H)) { const w2 = Math.min(qw, W - qx), h2 = Math.min(qh, H - qy); if (w2 > 0 && h2 > 0) g.drawImage(fin, qx, qy, w2, h2, qx, qy, w2, h2); }
+}
+
 // ---------- dither mode: the whole image reduced straight to a 2(+)-colour dither ----------
 function renderDither(W, H, g, u, live) {
   drawSource(W, H);
@@ -569,6 +586,7 @@ function render(W, H, target) {
   if (!img) return;
   const u = Math.max(W, H) / 850;
   const live = target === out;
+  if (v.mode === 'none') return renderNone(W, H, g, u);
   if (v.mode === 'shapes') return renderShapes(W, H, g, u, live);
   if (v.mode === 'dither') return renderDither(W, H, g, u, live);
   if (v.mode === 'glyph') return renderGlyph(W, H, g, u, live);
@@ -781,14 +799,17 @@ const A_ = (label, icon, fn) => ({ t: 'a', label, icon, fn });
 const FORMATS = [['image', 'Original'], ['screen', 'Full screen'], ['1', 'Square'], ['0.8', '4:5'], ['0.75', '3:4'], ['0.6667', '2:3'], ['0.5625', '9:16'], ['1.7778', '16:9'], ['1.3333', '4:3'], ['1.5', '3:2'], ['0.7071', 'A4'], ['1.4142', 'A4 wide']];
 // Switch to hide Martens from the Mode picker without removing it
 const MARTENS_ON = true;
-const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : [])]), { onPick: () => {
+const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : [])]), { onPick: () => {
   builtTab = null; selIdx.pattern = 0; selIdx.colour = 0;
   primeMode();
 } });
-let shapesPrimed = false, ditherPrimed = false, glyphModePrimed = false, martensPrimed = false;
+let shapesPrimed = false, weavePrimed = false, ditherPrimed = false, glyphModePrimed = false, martensPrimed = false;
 // First-visit setup for a mode — run on picking it, and for the default mode at start and after a reset
 function primeMode() {
-  if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; v.sat = 1.1; v.con = 1.05; if (img) extractPalette(); }
+  // Starting contrast/saturation for a pattern only apply if the photo hasn't been adjusted yet
+  const untouched = v.con === 1 && v.sat === 1;
+  if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; if (untouched) { v.sat = 1.1; v.con = 1.05; } if (img && paletteAuto) extractPalette(); }
+  if (v.mode === 'weave' && !weavePrimed) { weavePrimed = true; if (untouched) { v.con = 1.15; v.sat = 1.25; } }
   if (v.mode === 'glyph' && !glyphModePrimed) { glyphModePrimed = true; palette = ['#ffffff', '#111111']; paletteSrc = palette.slice(); paletteAuto = false; }
   if (v.mode === 'martens' && !martensPrimed) { martensPrimed = true; palette = ['#111111', '#f2f2f2']; paletteSrc = palette.slice(); paletteAuto = false; }
   if (v.mode === 'dither' && !ditherPrimed) { ditherPrimed = true; palette = ['#000000', HOT[Math.floor(Math.random() * HOT.length)]]; paletteSrc = palette.slice(); paletteAuto = false; }
@@ -901,12 +922,12 @@ const CROP_REST = [
 ];
 function CROP_ITEMS() { return [CROP_REST[0], ...SPLIT_ITEMS(), ...CROP_REST.slice(1)]; }
 const TABS = [
-  { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
+  { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
   // Adjust: the photo itself. Texture: what's laid over the result (grain, glow, blend, dither finish)
   { id: 'adjust', label: 'Adjust', icon: IC.adjust, items: [
     S_('bri', 'Brightness', IC.sun, 0.4, 1.8, 0.01), S_('con', 'Contrast', IC.contrast, 0.4, 2, 0.01),
     S_('sat', 'Saturation', IC.drop, 0, 2, 0.01), S_('hue', 'Hue', IC.hue, -180, 180, 1)] },
-  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
+  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
   { id: 'texture', label: 'Texture', icon: IC.noise, items: [
     S_('grain', 'Grain', IC.noise, 0, 80, 1),
     S_('glow', 'Glow', IC.glow, 0, 2, 0.01), S_('gsize', 'Glow size', IC.radius, 2, 60, 1),
@@ -1199,7 +1220,7 @@ let resetArm = 0;
 $('vreset').onclick = () => {
   if (Date.now() - resetArm > 2500) { resetArm = Date.now(); flash('Tap again to reset all settings'); return; }
   resetArm = 0;
-  Object.assign(v, D0); seed = 7; shapesPrimed = false; ditherPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
+  Object.assign(v, D0); seed = 7; shapesPrimed = false; weavePrimed = false; ditherPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
   Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null;
   if (img) extractPalette();
   drawAll(); schedule(); flash('Settings reset');
@@ -1413,7 +1434,7 @@ async function renderLibList() {
     if (!items.length) { box.innerHTML = '<p class="lib-empty">No saved presets yet</p>'; return; }
     items.forEach(p => {
       const row = libRow(
-        p.mode === 'shapes' ? '◆' : p.mode === 'glyph' ? '✦' : p.mode === 'dither' ? '▦' : p.mode === 'martens' ? '▨' : '≋',
+        p.mode === 'none' ? '○' : p.mode === 'shapes' ? '◆' : p.mode === 'glyph' ? '✦' : p.mode === 'dither' ? '▦' : p.mode === 'martens' ? '▨' : '≋',
         p.name,
         new Date(p.createdAt).toLocaleDateString() + ' · ' + ((MODE_ITEM.opts.find(o => o[0] === p.mode) || [, p.mode])[1]),
         () => applyPreset(p),
