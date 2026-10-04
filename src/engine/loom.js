@@ -1163,7 +1163,7 @@ const IC = {
   diag: I("<path d=\"M3 21 21 3\" />  <path d=\"M3 12 12 3\" />  <path d=\"m12 21 9-9\" />"),
   bleed: I("<circle cx=\"12\" cy=\"12\" r=\"3\" />  <circle cx=\"12\" cy=\"12\" r=\"6.5\" stroke-dasharray=\"1.5 2.5\" />  <circle cx=\"12\" cy=\"12\" r=\"10\" stroke-dasharray=\"1 4\" />"),
   newcanvas: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M12 8v8\" />  <path d=\"M8 12h8\" />"),
-  clear: I("<path d=\"M18 6 6 18\" />  <path d=\"m6 6 12 12\" />"),
+  clear: I("<path d=\"m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21\" />  <path d=\"M22 21H7\" />  <path d=\"m5 11 9 9\" />"),
   library: I("<path d=\"m16 6 4 14\" />  <path d=\"M12 6v14\" />  <path d=\"M8 8v12\" />  <path d=\"M4 4v16\" />"),
 };
 $('vlib').innerHTML = IC.library;

@@ -106,8 +106,11 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
   body.menuopen .vbar > button:not([hidden]){display:flex; width:auto; min-width:180px; height:44px; justify-content:flex-start; gap:12px; padding:0 12px; border-radius:14px}
   body.menuopen .vbar > button::after{content:attr(aria-label); font-size:15px; white-space:nowrap}
   body.menuopen .vbar > button svg{flex:0 0 auto}
-  body.menuopen #vmenu{order:-1; display:flex}
-  body.menuopen #vmenu::after{content:'Close'}
+  /* open, the burger turns into a plain X in the top-right corner, where it was */
+  body.menuopen #vmenu{order:-1; display:grid; place-items:center; align-self:flex-end; width:44px; min-width:0; padding:0; border-radius:50%}
+  body.menuopen #vmenu::after{content:none}
+  #vmenu .i-x, body.menuopen #vmenu .i-burger{display:none}
+  body.menuopen #vmenu .i-x{display:block}
 }
 
 /* ---------- Desktop: same floating style, but tabs and settings stack down the left so the
