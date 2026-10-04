@@ -965,7 +965,13 @@ function drawTabs() {
   const nav = $('tabs'); nav.innerHTML = '';
   TABS.forEach(t => {
     const b = document.createElement('button'); b.className = 'tab'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', t.id === tabId);
-    b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => { tabId = tabId === t.id ? null : t.id; if (tabId) { rawPreview = false; cache = null; } builtTab = null; drawAll(); schedule(); }; nav.append(b);
+    b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => {
+      // Pattern always lands on the Mode overview: tapping it inside a pattern's settings goes back there,
+      // and only closes once you're already on Mode
+      if (t.id === 'pattern' && tabId === 'pattern' && selIdx.pattern !== 0) selIdx.pattern = 0;
+      else { tabId = tabId === t.id ? null : t.id; if (tabId === 'pattern') selIdx.pattern = 0; }
+      if (tabId) { rawPreview = false; cache = null; } builtTab = null; drawAll(); schedule();
+    }; nav.append(b);
   });
 }
 let builtTab = null, scrollLock = false, lockT;
