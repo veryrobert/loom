@@ -1839,6 +1839,6 @@ $('vsave').onclick = async () => {
 };
 
 layout();
-// Boot splash: the four threads draw in once (last one done at ~1.25s), hold a beat, then fade away
-setTimeout(() => { const b = $('boot'); if (b) hideAfter(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 500 }, () => b.remove()); }, 1650);
+// Boot splash: the eight threads draw in once (last one done at ~1.25s), hold a beat, then fade away
+setTimeout(() => { const b = $('boot'); if (b) hideAfter(b, [{ opacity: 1 }, { opacity: 0 }], { duration: 500 }, () => b.remove()); }, 1700);
 }
