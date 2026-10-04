@@ -33,7 +33,7 @@ const v = {
   // (×0.7) and Dither mode dots (×0.2); density zones vary it across the image
   mode: 'none', scale: 10, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
   mdir: 'h', mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30,
-  gltype: 'reeded', gldir: 'v', glrefract: 0.7, glfrost: 0.2, glhigh: 0.5, glshadow: 0.35, glfringe: 0.2, glirreg: false,
+  gltype: 'reeded', gldir: 'v', glrefract: 0.8, glfrost: 0.15, glhigh: 0.45, glshadow: 0.4, glfringe: 0.35, glirreg: false, glsurface: 0.45,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
 };
@@ -520,7 +520,7 @@ function renderNone(W, H, g, u) {
 // an edge highlight, a soft shadow and a fine seam. Scale sets rib width ----------
 function renderGlass(W, H, g, u, live) {
   patternSource(W, H);
-  const pkey = JSON.stringify(['glass', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
+  const pkey = JSON.stringify(['glass', W, H, v.zoom, v.panX, v.panY, v.bri, v.con, v.sat, v.hue, v.photoColour, palette, v.scale, v.gltype, v.gldir, v.glrefract, v.glfrost, v.glhigh, v.glshadow, v.glfringe, v.glirreg, v.glsurface, v.glow, v.gsize, v.grain, v.dither, v.invert, seed, imgId]);
   let O;
   if (live && cache && cache.pkey === pkey) O = cache.O.slice();
   else {
@@ -543,24 +543,33 @@ function renderGlass(W, H, g, u, live) {
 function glassPass(S, W, H, u) {
   const vert = v.gldir !== 'h', nC = vert ? W : H, nA = vert ? H : W; // C: across the ribs, A: along them
   const at = vert ? (a, c) => (a * W + c) * 4 : (a, c) => (c * W + a) * 4;
-  const type = v.gltype, rib = Math.max(3, v.scale * 3 * u), rnd = mulberry(seed * 53 + 11);
+  const type = v.gltype, rib = Math.max(3, v.scale * 6 * u), rnd = mulberry(seed * 53 + 11);
   // Per position across the ribs: where R, G and B sample from, and how the glass lights it
   const sR = new Int32Array(nC), sG = new Int32Array(nC), sB = new Int32Array(nC), mul = new Float32Array(nC), add = new Float32Array(nC);
   const clampC = c => c < 0 ? Math.min(nC - 1, -c) : c >= nC ? Math.max(0, 2 * nC - 2 - c) : c; // mirror at the edges
+  // Each rib is a glass cylinder (convex for Reeded, concave for Fluted). At each position across it the
+  // surface tilts by α; a ray from the photo bends by Snell's law (n≈1.5) and comes out displaced by
+  // thickness·tan(α−β), so ribs show a compressed slice of a wider strip, mostly at their edges.
+  // Red and blue use slightly different indices for real dispersion. Light: Fresnel reflection grows with
+  // the tilt (Schlick), one sharp specular from a single upper-left light, and a crisp 1px seam
+  const nG = 1.5, nR = nG - v.glfringe * 0.035, nB = nG + v.glfringe * 0.035;
+  const Lx = -0.45, Lz = 0.89; // light direction across the ribs (normalised)
   let c0 = 0, ribSum = 0, ribs = 0;
   while (c0 < nC) {
     const w = Math.max(2, Math.round(rib * (v.glirreg ? 0.55 + rnd() * 0.9 : 1))); ribSum += w; ribs++;
+    const thick = w * v.glrefract * 1.4, seamPx = Math.max(0.6, 0.45 * u);
     for (let c = c0; c < Math.min(nC, c0 + w); c++) {
-      const t = (c - c0 + 0.5) / w, n = t * 2 - 1;                // 0..1 across this rib, and -1..1
-      // Refraction shape: reeded = cylindrical lens (shift grows from the centre), fluted = prism ramp
-      const shape = type === 'frosted' ? 0 : type === 'fluted' ? -n : -Math.sin(n * Math.PI / 2) * (0.6 + 0.4 * Math.abs(n));
-      const d = shape * v.glrefract * w * 0.5, f = 1 + v.glfringe * 0.35;
-      sG[c] = clampC(Math.round(c + d)); sR[c] = clampC(Math.round(c + d * f)); sB[c] = clampC(Math.round(c + d / f));
-      // Light: a highlight stroke near the leading edge, shadow falling toward the far edge, a dark seam
-      const hl = type === 'frosted' ? 0 : Math.exp(-(((t - 0.12) / 0.07) ** 2)) + 0.35 * Math.exp(-(((t - 0.5) / 0.25) ** 2)) * (type === 'reeded' ? 1 : 0);
-      const sh = type === 'frosted' ? 0 : Math.max(0, (t - 0.55) / 0.45) ** 1.6, seam = type === 'frosted' ? 0 : Math.exp(-((Math.min(t, 1 - t) / 0.025) ** 2));
-      mul[c] = (1 - v.glshadow * 0.42 * sh) * (1 - 0.35 * seam * (v.glhigh * 0.5 + v.glshadow * 0.5));
-      add[c] = v.glhigh * 70 * hl;
+      const t = (c - c0 + 0.5) / w, x = (t * 2 - 1) * 0.985;     // −1..1 across the rib, kept off the very rim
+      let alpha = 0;
+      if (type !== 'frosted') { alpha = Math.atan(x / Math.sqrt(1 - x * x)); if (type === 'fluted') alpha = -alpha; }
+      const bend = n => Math.tan(alpha - Math.asin(Math.sin(alpha) / n)) * thick;
+      sG[c] = clampC(Math.round(c + bend(nG))); sR[c] = clampC(Math.round(c + bend(nR))); sB[c] = clampC(Math.round(c + bend(nB)));
+      const ca = Math.cos(alpha), sa = Math.sin(alpha);
+      const fres = 0.04 + 0.96 * Math.pow(1 - ca, 5);
+      const spec = Math.pow(Math.max(0, sa * Lx + ca * Lz), 48);
+      const edge = Math.min(c - c0 + 0.5, c0 + w - c - 0.5), seam = type === 'frosted' ? 0 : Math.exp(-((edge / seamPx) ** 2));
+      mul[c] = (1 - v.glshadow * 0.55 * Math.pow(1 - ca, 1.2)) * (1 - 0.55 * seam * (0.4 + 0.6 * v.glshadow));
+      add[c] = type === 'frosted' ? 0 : v.glhigh * (85 * spec + 70 * fres) + 40 * seam * v.glhigh * 0.35;
     }
     c0 += w;
   }
@@ -571,7 +580,7 @@ function glassPass(S, W, H, u) {
     for (let a = 0; a < nA; a++) { R[base + a] = S[at(a, xr)]; G[base + a] = S[at(a, xg) + 1]; B[base + a] = S[at(a, xb) + 2]; }
   }
   // Frost: two box-blur passes along each rib (close to a Gaussian); frosted glass also hazes across
-  const rA = Math.round(v.glfrost * (ribSum / ribs) * 1.6), rC = type === 'frosted' ? Math.round(v.glfrost * (ribSum / ribs) * 0.8) : 0;
+  const rA = Math.round(v.glfrost * (ribSum / ribs) * 0.8), rC = type === 'frosted' ? Math.round(v.glfrost * (ribSum / ribs) * 0.4) : 0;
   const along = (X, r) => { if (r < 1) return; const tmpL = new Float32Array(nA);
     for (let c = 0; c < nC; c++) { const base = c * nA; for (let pass = 0; pass < 2; pass++) { let acc = 0; for (let a = -r; a <= r; a++) acc += X[base + Math.min(nA - 1, Math.max(0, a))];
       for (let a = 0; a < nA; a++) { tmpL[a] = acc / (2 * r + 1); acc += X[base + Math.min(nA - 1, a + r + 1)] - X[base + Math.max(0, a - r)]; } X.set(tmpL, base); } } };
@@ -581,11 +590,16 @@ function glassPass(S, W, H, u) {
         for (let c = 0; c < nC; c++) { outC[c] = acc / (2 * r + 1); acc += col[Math.min(nC - 1, c + r + 1)] - col[Math.max(0, c - r)]; } col.set(outC); }
       for (let c = 0; c < nC; c++) X[c * nA + a] = col[c]; } };
   [R, G, B].forEach(X => { along(X, rA); across(X, rC); });
-  // Light the glass and write back in image layout
-  const O = new Uint8ClampedArray(W * H * 4);
+  // Light the glass and write back in image layout. The glass surface's stipple (Surface) jitters each
+  // pixel's sample by a pixel or two in both directions, which is what gives real textured glass its sparkle
+  const O = new Uint8ClampedArray(W * H * 4), amp = v.glsurface * Math.max(1, 1.6 * u), sd = seed * 977 + 5;
   for (let c = 0; c < nC; c++) {
-    const base = c * nA, m = mul[c], ad = add[c];
-    for (let a = 0; a < nA; a++) { const i = at(a, c); O[i] = R[base + a] * m + ad; O[i + 1] = G[base + a] * m + ad; O[i + 2] = B[base + a] * m + ad; O[i + 3] = 255; }
+    const m = mul[c], ad = add[c];
+    for (let a = 0; a < nA; a++) {
+      let cc = c, aa = a;
+      if (amp > 0) { cc = Math.min(nC - 1, Math.max(0, c + Math.round((hash2(a, c, sd) - 0.5) * 2 * amp))); aa = Math.min(nA - 1, Math.max(0, a + Math.round((hash2(c, a, sd + 1) - 0.5) * 2 * amp))); }
+      const k = cc * nA + aa, i = at(a, c); O[i] = R[k] * m + ad; O[i + 1] = G[k] * m + ad; O[i + 2] = B[k] * m + ad; O[i + 3] = 255;
+    }
   }
   return O;
 }
@@ -959,6 +973,7 @@ const GLASS_ITEMS = [MODE_ITEM,
     when(S_('glhigh', 'Highlights', IC.sun, 0, 1, 0.01), () => v.gltype !== 'frosted'),
     when(S_('glshadow', 'Shadows', IC.contrast, 0, 1, 0.01), () => v.gltype !== 'frosted'),
     when(S_('glfringe', 'Colour fringe', IC.hue, 0, 1, 0.01), () => v.gltype !== 'frosted'),
+    S_('glsurface', 'Surface', IC.noise, 0, 1, 0.01),
     T_('glirreg', 'Irregular ribs', IC.uneven)];
 const MARTENS_ITEMS = [MODE_ITEM,
     C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical'], ['d', 'Diagonal']]),

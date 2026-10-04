@@ -66,11 +66,12 @@ all share the same model:
 |---|---|---|
 | Glass | Reeded · Fluted · Frosted | Reeded |
 | Direction | Vertical · Horizontal | Vertical |
-| Refraction | 0–1.5 | 0.7 |
-| Frost | 0–1 | 0.2 |
-| Highlights | 0–1 | 0.5 |
-| Shadows | 0–1 | 0.35 |
-| Fringe (colour split) | 0–1 | 0.2 |
+| Refraction | 0–1.5 | 0.8 |
+| Frost | 0–1 | 0.15 |
+| Highlights | 0–1 | 0.45 |
+| Shadows | 0–1 | 0.4 |
+| Fringe (colour split) | 0–1 | 0.35 |
+| Surface (stipple) | 0–1 | 0.45 |
 | Irregular ribs | on / off | off |
 
 **Out of scope for v1:** diagonal and wavy ribs, glass "cards" (inset panels with margins), and
@@ -82,6 +83,24 @@ vector export (Glass is a photographic effect, so PNG only).
   high Frost on a colourful photo like the streaked abstracts.
 - Scale and Density change rib width; Invert, Grain and Dither finish layer correctly.
 - Performance: a full-screen redraw while dragging a slider should stay smooth on a phone.
+
+## v2: physically based (2026-10-04)
+
+The first version used hand-tuned curves. v2 models the glass:
+
+- **Snell's law:** each rib is a glass cylinder (convex for Reeded, concave for Fluted). At position x
+  across a rib the surface tilts by α = atan(x/√(1−x²)). A ray bends to β = asin(sin α / n) with
+  n ≈ 1.5 and exits displaced by thickness·tan(α − β). Ribs see almost straight through in the middle
+  and bend strongly at the edges, so each shows a compressed slice of a wider strip.
+- **Dispersion:** red and blue use n ∓ 0.035·fringe, so colour splitting is physical rather than a
+  uniform offset.
+- **Light:** Fresnel reflection (Schlick, F₀ = 0.04) brightens steep edges; one specular highlight
+  comes from a single upper-left light; a crisp ~1px seam marks each rib boundary. Highlights are kept
+  subtle so the ribs read as glass, not chrome.
+- **Surface:** a new control that jitters each pixel's sample by a pixel or two. That reproduces the
+  stippled, sparkly texture of real reeded glass, the strongest realism cue in the references.
+- **Proportions:** ribs are twice as wide per Scale step (about 12–14 across, like the references), and
+  blur is halved so slices stay crisp.
 
 ## Code references (read 2026-10-04)
 
