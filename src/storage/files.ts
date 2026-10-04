@@ -1,4 +1,5 @@
 import { db, type StoredFile } from './db';
+import { currentAccount } from './account';
 
 // Keep the photo gallery from growing without bound — old source files are
 // the least likely to matter, so trim from the oldest end.
@@ -14,6 +15,7 @@ export async function storeFile(file: File): Promise<number> {
     size: file.size,
     createdAt: Date.now(),
     blob: file,
+    ownerId: currentAccount().id,
   });
   const all = await db.files.orderBy('createdAt').reverse().toArray();
   const stale = all.slice(MAX_FILES);

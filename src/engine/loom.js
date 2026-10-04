@@ -1441,91 +1441,93 @@ function vectorFile(fmt, W, H) {
   return pdf;
 }
 
-// ---------- library: presets · stored files · past downloads (new) ----------
-const lib = { tab: 'presets' };
+// ---------- gallery: a full-screen grid of square tiles — Creations (your exports), Styles (saved
+// looks) and Photos (uploaded sources). Replaces the old Library sheet; still opened from the Library button ----------
+const lib = { tab: 'downloads' };
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function formatBytes(n) { if (n < 1024) return n + ' B'; if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'; return (n / 1048576).toFixed(1) + ' MB'; }
-function openLibrary() { document.body.classList.add('exporting'); $('library').classList.remove('hidden'); drawLibrary(); }
-function closeLibrary() { document.body.classList.remove('exporting'); $('library').classList.add('hidden'); }
+function openLibrary() { document.body.classList.add('exporting'); document.body.classList.remove('menuopen'); $('library').classList.remove('hidden'); drawLibrary(); }
+function closeLibrary() { closeGalView(); document.body.classList.remove('exporting'); $('library').classList.add('hidden'); }
 function refreshLibraryIfOpen() { if (!$('library').classList.contains('hidden')) renderLibList(); }
 $('vlib').onclick = openLibrary;
 $('libClose').onclick = closeLibrary;
+addEventListener('keydown', e => { if (e.key !== 'Escape' || $('library').classList.contains('hidden')) return; if (!$('galView').classList.contains('hidden')) closeGalView(); else closeLibrary(); });
 function drawLibrary() {
-  segment($('libSeg'), [['presets', 'Presets'], ['files', 'Photos'], ['downloads', 'Downloads']], lib.tab, t => { lib.tab = t; drawLibrary(); });
+  segment($('libSeg'), [['downloads', 'Creations'], ['presets', 'Styles'], ['files', 'Photos']], lib.tab, t => { lib.tab = t; drawLibrary(); });
   $('libSaveGroup').classList.toggle('hidden', lib.tab !== 'presets');
   renderLibList();
 }
-function libRow(thumbHtml, name, sub, onOpen, onDelete) {
-  const row = document.createElement('div'); row.className = 'lib-row';
-  const thumb = document.createElement('div'); thumb.className = 'lib-thumb'; thumb.innerHTML = thumbHtml;
-  const meta = document.createElement('div'); meta.className = 'lib-meta';
-  meta.innerHTML = `<div class="lib-name">${escapeHtml(name)}</div><div class="lib-sub">${escapeHtml(sub)}</div>`;
-  meta.onclick = onOpen;
-  const del = document.createElement('button'); del.className = 'lib-del'; del.setAttribute('aria-label', 'Delete'); del.textContent = '×';
-  del.onclick = async e => { e.stopPropagation(); await onDelete(); renderLibList(); };
-  row.append(thumb, meta, del);
-  return row;
+const MODE_MARK = { none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', weave: '≋' };
+const modeName = m => (MODE_ITEM.opts.find(o => o[0] === m) || [, m])[1];
+// One square tile: media (or a big mark), a caption on hover, and corner buttons
+function galTile(media, caption, onOpen, buttons) {
+  const t = document.createElement('div'); t.className = 'gal-tile'; t.tabIndex = 0;
+  if (typeof media === 'string') { const m = document.createElement('div'); m.className = 'gal-mark'; m.textContent = media; t.append(m); } else t.append(media);
+  const cap = document.createElement('div'); cap.className = 'gal-cap'; cap.textContent = caption; t.append(cap);
+  const tools = document.createElement('div'); tools.className = 'gal-tools';
+  buttons.forEach(([label, text, fn]) => { const b = document.createElement('button'); b.setAttribute('aria-label', label); b.title = label; b.textContent = text; b.onclick = e => { e.stopPropagation(); fn(t); }; tools.append(b); });
+  t.append(tools);
+  t.onclick = onOpen; t.onkeydown = e => { if (e.key === 'Enter') onOpen(); };
+  return t;
 }
 async function renderLibList() {
   const box = $('libList');
+  clearThumbs(box);
+  const empty = msg => { box.innerHTML = `<p class="lib-empty">${msg}</p>`; };
   if (lib.tab === 'presets') {
     const items = await listPresets();
-    box.innerHTML = '';
-    if (!items.length) { box.innerHTML = '<p class="lib-empty">No saved presets yet</p>'; return; }
+    if (!items.length) return empty('No saved styles yet. Save the current look above, or with the save button in the top bar.');
     items.forEach(p => {
-      const row = libRow(
-        p.mode === 'none' ? '○' : p.mode === 'shapes' ? '◆' : p.mode === 'glyph' ? '✦' : p.mode === 'dither' ? '▦' : p.mode === 'martens' ? '▨' : '≋',
-        p.name,
-        new Date(p.createdAt).toLocaleDateString() + ' · ' + ((MODE_ITEM.opts.find(o => o[0] === p.mode) || [, p.mode])[1]),
-        () => applyPreset(p),
-        () => deletePreset(p.id),
-      );
-      // Rename in place: ✎ swaps the name for a text field; Enter or leaving the field saves it
-      const ed = document.createElement('button'); ed.className = 'lib-del'; ed.setAttribute('aria-label', 'Rename'); ed.textContent = '✎';
-      ed.onclick = e => {
-        e.stopPropagation();
-        const nameEl = row.querySelector('.lib-name'), inp = document.createElement('input');
-        inp.className = 'lib-rename'; inp.value = p.name; inp.maxLength = 40; nameEl.replaceWith(inp); inp.focus(); inp.select();
-        inp.onclick = ev => ev.stopPropagation();
-        let done = false;
-        const commit = async () => { if (done) return; done = true; const n = inp.value.trim(); if (n && n !== p.name) await renamePreset(p.id, n); renderLibList(); };
-        inp.onkeydown = ev => { if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') { done = true; renderLibList(); } };
-        inp.onblur = commit;
-      };
-      row.insertBefore(ed, row.lastChild);
-      box.append(row);
+      let media = MODE_MARK[p.mode] || '◆';
+      if (p.thumb) { media = document.createElement('img'); media.src = p.thumb; media.alt = ''; }
+      box.append(galTile(media, p.name + ' · ' + modeName(p.mode), () => applyPreset(p), [
+        ['Rename', '✎', async tile => {
+          // Rename in place: the caption becomes a text field; Enter or leaving it saves
+          const inp = document.createElement('input'); inp.className = 'gal-rename'; inp.value = p.name; inp.maxLength = 40;
+          inp.onclick = ev => ev.stopPropagation(); tile.querySelector('.gal-cap').replaceWith(inp); tile.classList.add('editing'); inp.focus(); inp.select();
+          let done = false;
+          const commit = async () => { if (done) return; done = true; const n = inp.value.trim(); if (n && n !== p.name) await renamePreset(p.id, n); renderLibList(); };
+          inp.onkeydown = ev => { ev.stopPropagation(); if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') { done = true; renderLibList(); } };
+          inp.onblur = commit;
+        }],
+        ['Delete', '×', async () => { await deletePreset(p.id); renderLibList(); }],
+      ]));
     });
   } else if (lib.tab === 'files') {
     const items = await listFiles();
-    clearThumbs(box);
-    if (!items.length) { box.innerHTML = '<p class="lib-empty">No photos or videos yet</p>'; return; }
-    // Gallery: a thumbnail grid, newest first; tap to open, × to remove
-    const grid = document.createElement('div'); grid.className = 'lib-grid';
+    if (!items.length) return empty('No photos or videos yet');
     items.forEach(f => {
-      const cell = document.createElement('div'); cell.className = 'lib-cell'; cell.title = f.name + ' · ' + new Date(f.createdAt).toLocaleDateString();
-      cell.append(thumbEl(f, box)); if (f.type.startsWith('video/')) cell.insertAdjacentHTML('beforeend', '<span class="recent-play">▶</span>');
-      cell.onclick = () => reopenFile(f);
-      const del = document.createElement('button'); del.className = 'lib-cell-del'; del.setAttribute('aria-label', 'Delete ' + f.name); del.textContent = '×';
-      del.onclick = async e => { e.stopPropagation(); await deleteFile(f.id); renderLibList(); drawRecent(); };
-      cell.append(del); grid.append(cell);
+      const tile = galTile(thumbEl(f, box), f.name, () => reopenFile(f), [['Delete', '×', async () => { await deleteFile(f.id); renderLibList(); drawRecent(); }]]);
+      if (f.type.startsWith('video/')) tile.insertAdjacentHTML('beforeend', '<span class="recent-play">▶</span>');
+      box.append(tile);
     });
-    box.append(grid);
   } else {
     const items = await listDownloads();
-    box.innerHTML = '';
-    if (!items.length) { box.innerHTML = '<p class="lib-empty">No downloads yet</p>'; return; }
+    if (!items.length) return empty('Nothing exported yet. Your downloads appear here.');
     items.forEach(d => {
-      const img2 = d.mime.startsWith('image/') && d.mime !== 'image/svg+xml';
-      const thumbHtml = img2 ? `<img src="${URL.createObjectURL(d.blob)}">` : (d.mime.includes('video') ? '▶' : '↓');
-      box.append(libRow(
-        thumbHtml, d.filename,
-        new Date(d.createdAt).toLocaleDateString() + ' · ' + formatBytes(d.size),
-        () => redownload(d.id),
-        () => deleteDownload(d.id),
-      ));
+      const isImg = d.mime.startsWith('image/'), isVid = d.mime.startsWith('video/');
+      const media = isImg || isVid ? thumbEl({ type: d.mime, blob: d.blob }, box) : (d.mime.includes('pdf') ? 'PDF' : '↓');
+      const tile = galTile(media, d.filename + ' · ' + formatBytes(d.size), () => openGalView(d), [['Delete', '×', async () => { await deleteDownload(d.id); renderLibList(); }]]);
+      if (isVid) tile.insertAdjacentHTML('beforeend', '<span class="recent-play">▶</span>');
+      box.append(tile);
     });
   }
 }
+// Large view of a creation, with download and delete
+let galUrl = null;
+function openGalView(d) {
+  const m = $('galMedia'); m.innerHTML = '';
+  galUrl = URL.createObjectURL(d.blob);
+  if (d.mime.startsWith('video/')) { const el = document.createElement('video'); el.src = galUrl; el.controls = true; el.autoplay = true; el.muted = true; el.loop = true; el.playsInline = true; m.append(el); }
+  else if (d.mime.startsWith('image/')) { const el = document.createElement('img'); el.src = galUrl; el.alt = d.filename; m.append(el); }
+  else { const el = document.createElement('div'); el.className = 'gal-mark'; el.textContent = d.mime.includes('pdf') ? 'PDF' : '↓'; m.append(el); }
+  $('galName').textContent = d.filename + ' · ' + new Date(d.createdAt).toLocaleDateString() + ' · ' + formatBytes(d.size);
+  $('galDl').onclick = () => redownload(d.id);
+  $('galDel').onclick = async () => { await deleteDownload(d.id); closeGalView(); renderLibList(); };
+  $('galView').classList.remove('hidden');
+}
+function closeGalView() { $('galView').classList.add('hidden'); $('galMedia').innerHTML = ''; if (galUrl) { URL.revokeObjectURL(galUrl); galUrl = null; } }
+$('galBack').onclick = closeGalView;
 function applyPreset(p) {
   const { __seed, __palette, __paletteSrc, ...rest } = p.state;
   Object.assign(v, rest);
@@ -1577,7 +1579,15 @@ function reopenFile(f) {
   loadFile(file, { skipStore: true });
 }
 // A preset is the whole look: every setting, the shuffle seed and the palette
-const saveLook = name => savePreset(name, v.mode, { ...v, __seed: seed, __palette: palette.slice(), __paletteSrc: paletteSrc.slice() });
+// A small JPEG of the look for its gallery tile. Rendered fresh at thumbnail size (patterns scale with the
+// canvas) rather than copied from the screen, which can be mid-redraw or not yet painted
+function lookThumb() {
+  try {
+    const r = ratio(), W = r >= 1 ? 360 : Math.round(360 * r), H = r >= 1 ? Math.round(360 / r) : 360, c = document.createElement('canvas');
+    render(W, H, c); return c.toDataURL('image/jpeg', 0.82);
+  } catch { return undefined; }
+}
+const saveLook = name => savePreset(name, v.mode, { ...v, __seed: seed, __palette: palette.slice(), __paletteSrc: paletteSrc.slice() }, lookThumb());
 $('libSaveBtn').onclick = async () => {
   const name = $('libSaveName').value.trim();
   if (!name) { flash('Give the preset a name'); return; }

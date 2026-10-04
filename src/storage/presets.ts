@@ -1,7 +1,8 @@
 import { db, type Preset } from './db';
+import { currentAccount } from './account';
 
-export async function savePreset(name: string, mode: string, state: Record<string, unknown>): Promise<number> {
-  return db.presets.add({ name, mode, state: { ...state }, createdAt: Date.now() });
+export async function savePreset(name: string, mode: string, state: Record<string, unknown>, thumb?: string): Promise<number> {
+  return db.presets.add({ name, mode, state: { ...state }, thumb, createdAt: Date.now(), ownerId: currentAccount().id });
 }
 
 export async function listPresets(): Promise<Preset[]> {

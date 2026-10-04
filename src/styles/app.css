@@ -86,30 +86,12 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
 /* ---------- library sheet: presets · files · downloads (new) ---------- */
-.lib-save-row{display:flex; gap:8px; margin:0 0 4px}
-.lib-save-row input{flex:1; height:40px; border-radius:12px; padding:0 12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); color:#fff; font-size:14px; min-width:0}
-.lib-save-row input::placeholder{color:rgba(255,255,255,.4)}
-.lib-save-row button{height:40px; padding:0 16px; border-radius:12px; background:#fff; color:#111; font-size:14px; font-weight:500; white-space:nowrap}
-.lib-save-row button:disabled{opacity:.4}
-.lib-list{max-height:min(44vh, 320px); overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-top:10px; -webkit-overflow-scrolling:touch}
-.lib-row{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:14px; background:rgba(255,255,255,.06)}
-.lib-row:active{background:rgba(255,255,255,.12)}
-.lib-thumb{width:30px; height:30px; border-radius:8px; flex:0 0 auto; background:rgba(255,255,255,.12); display:grid; place-items:center; font-size:14px; overflow:hidden}
-.lib-thumb img{width:100%; height:100%; object-fit:cover}
-.lib-meta{flex:1; min-width:0; cursor:pointer}
-.lib-name{font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-.lib-sub{font-size:12px; color:rgba(255,255,255,.5)}
-.lib-del{width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,.1); display:grid; place-items:center; flex:0 0 auto; font-size:16px; color:rgba(255,255,255,.7)}
 .recent{display:flex; gap:8px; margin-top:18px; max-width:calc(100vw - 32px); overflow-x:auto; scrollbar-width:none; padding:2px}
 .recent::-webkit-scrollbar{display:none}
 .recent-item{position:relative; width:64px; height:64px; flex:0 0 auto; border-radius:14px; overflow:hidden; background:rgba(255,255,255,.08)}
-.recent-item img,.recent-item video,.lib-cell img,.lib-cell video{width:100%; height:100%; object-fit:cover; display:block; pointer-events:none}
+.recent-item img,.recent-item video,.gal-tile img,.gal-tile video{width:100%; height:100%; object-fit:cover; display:block; pointer-events:none}
 .recent-play{position:absolute; right:5px; bottom:4px; font-size:11px; color:#fff; text-shadow:0 0 3px #000}
 .recent-all{height:34px; padding:0 14px; border-radius:17px; background:rgba(255,255,255,.1); color:#fff; font-size:13px}
-.lib-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(84px, 1fr)); gap:6px}
-.lib-cell{position:relative; aspect-ratio:1; border-radius:12px; overflow:hidden; background:rgba(255,255,255,.08); cursor:pointer}
-.lib-cell-del{position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; font-size:14px; line-height:1; display:grid; place-items:center}
-.lib-rename{flex:1; min-width:0; height:30px; border-radius:8px; padding:0 8px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#fff; font:inherit; font-size:14px}
 .lib-empty{color:rgba(255,255,255,.45); font-size:13px; text-align:center; padding:24px 0}
 
 /* ---------- Phones: the top bar's actions fold into a burger menu ---------- */
@@ -149,3 +131,39 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
     background:var(--glass-strong); pointer-events:none; opacity:0; transition:opacity .12s; z-index:10}
   .tab:hover::after,.item:hover::after,.vbar > button:hover::after{opacity:1}
 }
+
+
+/* ---------- Gallery: full-screen grid of square tiles, Midjourney-style ---------- */
+.gallery{position:fixed; inset:0; z-index:20; background:var(--bg); overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0 0 calc(env(safe-area-inset-bottom,0px) + 24px)}
+.gal-head{position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:14px; padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 12px; background:linear-gradient(var(--bg) 75%, transparent)}
+.gal-title{font-size:20px; font-weight:500}
+.gal-head .seg{flex:0 1 380px; margin-left:auto}
+.gal-close{width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.1); font-size:20px; line-height:1; flex:0 0 auto}
+.gal-save{display:flex; gap:8px; padding:0 16px 14px; max-width:520px}
+.gal-save input{flex:1; min-width:0; height:40px; border-radius:12px; padding:0 12px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); color:#fff; font-size:14px}
+.gal-save input::placeholder{color:rgba(255,255,255,.4)}
+.gal-save button{height:40px; padding:0 16px; border-radius:12px; background:#fff; color:#111; font-size:14px; font-weight:500; white-space:nowrap}
+.gal-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:4px; padding:0 16px}
+@media (max-width:600px){ .gal-grid{grid-template-columns:repeat(3, 1fr); gap:2px; padding:0 2px} .gal-head{flex-wrap:wrap} .gal-head .seg{order:3; flex:1 1 100%} }
+.gal-grid .lib-empty{grid-column:1 / -1}
+.gal-tile{position:relative; aspect-ratio:1; overflow:hidden; background:rgba(255,255,255,.05); cursor:pointer; border-radius:4px; outline:none}
+.gal-tile img,.gal-tile video{transition:transform .25s ease}
+.gal-tile:hover img,.gal-tile:hover video{transform:scale(1.03)}
+.gal-tile:focus-visible{box-shadow:inset 0 0 0 2px #fff}
+.gal-mark{width:100%; height:100%; display:grid; place-items:center; font-size:36px; color:rgba(255,255,255,.55)}
+.gal-cap{position:absolute; left:0; right:0; bottom:0; padding:22px 10px 8px; font-size:12px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  background:linear-gradient(transparent, rgba(0,0,0,.7)); opacity:0; transition:opacity .15s}
+.gal-tools{position:absolute; top:6px; right:6px; display:flex; gap:4px; opacity:0; transition:opacity .15s}
+.gal-tools button{width:26px; height:26px; border-radius:50%; background:rgba(0,0,0,.6); color:#fff; font-size:13px; line-height:1}
+.gal-tile:hover .gal-cap,.gal-tile:hover .gal-tools,.gal-tile:focus-within .gal-cap,.gal-tile:focus-within .gal-tools,.gal-tile.editing .gal-tools{opacity:1}
+@media (hover:none){ .gal-cap,.gal-tools{opacity:1} }
+.gal-rename{position:absolute; left:6px; right:6px; bottom:6px; height:30px; border-radius:8px; padding:0 8px; background:rgba(0,0,0,.7); border:1px solid rgba(255,255,255,.3); color:#fff; font:inherit; font-size:13px}
+.gal-view{position:fixed; inset:0; z-index:3; background:rgba(10,10,10,.96); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:56px 16px 20px}
+.gal-view .gal-close{position:absolute; top:calc(env(safe-area-inset-top,0px) + 12px); right:16px}
+.gal-view-media{flex:1; min-height:0; width:100%; display:grid; place-items:center}
+.gal-view-media img,.gal-view-media video{max-width:100%; max-height:calc(100vh - 150px); object-fit:contain; border-radius:4px}
+.gal-view-media .gal-mark{width:200px; height:200px; border-radius:12px; background:rgba(255,255,255,.06)}
+.gal-view-bar{display:flex; align-items:center; gap:10px; max-width:100%; font-size:13px; color:rgba(255,255,255,.7)}
+.gal-view-bar span{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.gal-view-bar button{height:36px; padding:0 14px; border-radius:18px; background:rgba(255,255,255,.12); color:#fff; font-size:13px; flex:0 0 auto}
+.gal-view-bar #galDl{background:#fff; color:#111; font-weight:500}

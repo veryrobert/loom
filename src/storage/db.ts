@@ -12,6 +12,10 @@ export interface Preset {
   createdAt: number;
   /** Shallow copy of the engine's `v` state object at save time. */
   state: Record<string, unknown>;
+  /** Small JPEG data URL of the artwork when saved, for the gallery tile. */
+  thumb?: string;
+  /** Account the record belongs to ('local' until accounts exist). */
+  ownerId?: string;
 }
 
 /** An uploaded source image/video, kept so it can be reopened without a file picker. */
@@ -22,6 +26,7 @@ export interface StoredFile {
   size: number;
   createdAt: number;
   blob: Blob;
+  ownerId?: string;
 }
 
 /** A past export (PNG/SVG/PDF/video), kept so it can be re-downloaded later. */
@@ -32,6 +37,7 @@ export interface DownloadRecord {
   size: number;
   createdAt: number;
   blob: Blob;
+  ownerId?: string;
 }
 
 class LoomDB extends Dexie {

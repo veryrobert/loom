@@ -1,6 +1,8 @@
 import { db, type DownloadRecord } from './db';
+import { currentAccount } from './account';
 
-const MAX_DOWNLOADS = 24;
+// Exports are the gallery's Creations, so keep a good run of them
+const MAX_DOWNLOADS = 120;
 
 /** Triggers a real browser download and records a copy so it can be re-saved later. */
 export async function saveToDevice(filename: string, blob: Blob): Promise<void> {
@@ -26,6 +28,7 @@ export async function recordDownload(filename: string, blob: Blob): Promise<numb
     size: blob.size,
     createdAt: Date.now(),
     blob,
+    ownerId: currentAccount().id,
   });
   const all = await db.downloads.orderBy('createdAt').reverse().toArray();
   const stale = all.slice(MAX_DOWNLOADS);
