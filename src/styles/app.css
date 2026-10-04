@@ -111,3 +111,39 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 .lib-cell-del{position:absolute; top:4px; right:4px; width:24px; height:24px; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; font-size:14px; line-height:1; display:grid; place-items:center}
 .lib-rename{flex:1; min-width:0; height:30px; border-radius:8px; padding:0 8px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#fff; font:inherit; font-size:14px}
 .lib-empty{color:rgba(255,255,255,.45); font-size:13px; text-align:center; padding:24px 0}
+
+/* ---------- Phones: the top bar's actions fold into a burger menu ---------- */
+#vmenu{display:none}
+@media (max-width: 899px) {
+  #vmenu{display:grid}
+  body:not(.menuopen) .vbar > button:not(#vmenu):not(#vplay):not(#vrec){display:none}
+  body.menuopen .vbar{z-index:8; flex-direction:column; align-items:stretch; height:auto; padding:6px; border-radius:20px; background:var(--glass-strong)}
+  body.menuopen .vbar > button:not([hidden]){display:flex; width:auto; min-width:180px; height:44px; justify-content:flex-start; gap:12px; padding:0 12px; border-radius:14px}
+  body.menuopen .vbar > button::after{content:attr(aria-label); font-size:15px; white-space:nowrap}
+  body.menuopen .vbar > button svg{flex:0 0 auto}
+  body.menuopen #vmenu{order:-1; display:flex}
+  body.menuopen #vmenu::after{content:'Close'}
+}
+
+/* ---------- Desktop: same floating style, but tabs and settings stack down the left so the
+   artwork is never covered; labels appear on hover ---------- */
+@media (min-width: 900px) {
+  .dock{gap:10px}
+  .dock > .tabs{z-index:2; position:fixed; left:14px; top:50%; transform:translateY(-50%); flex-direction:column; padding:6px; gap:4px}
+  .tab{width:52px; height:52px; border-radius:18px}
+  .tab span{display:none}
+  .dock > .items{z-index:1; position:fixed; left:84px; top:50%; transform:translateY(-50%); flex-direction:column; width:auto;
+    overflow:visible; scroll-snap-type:none; padding:4px; gap:10px}
+  .items::before,.items::after{display:none}
+  .item{width:50px; height:50px}
+  .slot,.scrub,.chips{width:min(640px, calc(100vw - 180px))}
+  .dock > .slot,.dock > .title{margin-left:150px}
+  /* Hover labels for icon-only buttons */
+  .tab,.item,.vbar > button{position:relative}
+  .tab::after,.item::after{content:attr(data-label); left:calc(100% + 12px); top:50%; transform:translateY(-50%)}
+  .item::after{content:attr(aria-label)}
+  .vbar > button::after{content:attr(aria-label); top:calc(100% + 10px); left:50%; transform:translateX(-50%)}
+  .tab::after,.item::after,.vbar > button::after{position:absolute; white-space:nowrap; padding:5px 9px; border-radius:9px; font-size:12px; font-weight:400; color:#fff;
+    background:var(--glass-strong); pointer-events:none; opacity:0; transition:opacity .12s; z-index:10}
+  .tab:hover::after,.item:hover::after,.vbar > button:hover::after{opacity:1}
+}

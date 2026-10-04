@@ -713,13 +713,19 @@ function extractPalette() {
 
 
 // ---------- layout ----------
+// Desktop chrome footprint: the stacked tab + setting columns on the left, title/slider/swatches at the bottom
+const DESK_LEFT = 150, DESK_BOTTOM = 150;
 function layout() {
   // Fit the artboard between the top bar and the tab bar (tab controls may still float over it)
+  // Keep the artboard clear of the chrome. The top bar's row is fixed height (on phones its burger menu
+  // drops down over the art); on desktop the tab and setting columns sit left and their controls at the bottom
   const bar = $('vbar').getBoundingClientRect(), tabs = $('tabs').getBoundingClientRect(), gap = 10;
-  const top = bar.height ? bar.bottom + gap : gap, bottom = tabs.height ? tabs.top - gap : innerHeight - gap;
-  const aw = innerWidth - gap * 2, ah = Math.max(80, bottom - top);
+  const desk = matchMedia('(min-width: 900px)').matches && tabs.height;
+  const top = bar.height ? bar.top + 44 + gap : gap;
+  const bottom = desk ? innerHeight - DESK_BOTTOM : tabs.height ? tabs.top - gap : innerHeight - gap;
+  const x0 = desk ? DESK_LEFT : gap, aw = innerWidth - x0 - gap, ah = Math.max(80, bottom - top);
   const r = ratio(); let w = aw, h = w / r; if (h > ah) { h = ah; w = h * r; }
-  out.style.width = w + 'px'; out.style.height = h + 'px'; out.style.left = (innerWidth - w) / 2 + 'px'; out.style.top = top + (ah - h) / 2 + 'px';
+  out.style.width = w + 'px'; out.style.height = h + 'px'; out.style.left = x0 + (aw - w) / 2 + 'px'; out.style.top = top + (ah - h) / 2 + 'px';
   let k = Math.min(window.devicePixelRatio || 1, 2) * (interactive ? 0.5 : 1) * (vid && !vid.paused ? 0.6 : 1);
   if (recording) k = recLong / Math.max(w, h);
   const W = Math.round(w * k), H = Math.round(h * k);
@@ -980,7 +986,7 @@ function drawTabs() {
   const nav = $('tabs'); nav.innerHTML = '';
   if (v.mode === 'none' && tabId === 'scale') tabId = null;
   TABS.filter(t => !t.hidden && !(v.mode === 'none' && t.id === 'scale')).forEach(t => {
-    const b = document.createElement('button'); b.className = 'tab'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', t.id === tabId);
+    const b = document.createElement('button'); b.className = 'tab'; b.dataset.label = t.label; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', t.id === tabId);
     b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => {
       // Pattern always lands on the Mode overview: tapping it inside a pattern's settings goes back there,
       // and only closes once you're already on Mode
@@ -1585,6 +1591,10 @@ $('libSaveBtn').onclick = async () => {
 // stagger, dither square sizes, grain)
 $('vshuffle').innerHTML = IC.shuffle;
 $('vshuffle').onclick = () => { if (!img) return; seed = Math.floor(Math.random() * 1e6); cache = null; flash('Shuffled'); schedule(); };
+// Phones: the top bar's actions fold into a burger menu; any choice in it closes it again
+$('vmenu').onclick = e => { e.stopPropagation(); document.body.classList.toggle('menuopen'); };
+$('vbar').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.id !== 'vmenu') document.body.classList.remove('menuopen'); });
+addEventListener('pointerdown', e => { if (!e.target.closest('#vbar')) document.body.classList.remove('menuopen'); });
 $('vcrop').innerHTML = IC.crop;
 $('vcrop').onclick = () => { if (!img) return; tabId = tabId === 'crop' ? null : 'crop'; if (tabId) rawPreview = false; builtTab = null; drawAll(); schedule(); };
 $('vsave').onclick = async () => {
