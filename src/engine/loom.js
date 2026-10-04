@@ -1165,6 +1165,7 @@ const IC = {
   newcanvas: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M12 8v8\" />  <path d=\"M8 12h8\" />"),
   clear: I("<path d=\"m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21\" />  <path d=\"M22 21H7\" />  <path d=\"m5 11 9 9\" />"),
   reroll: I("<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\" />  <path d=\"M21 3v5h-5\" />  <path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\" />  <path d=\"M8 16H3v5\" />"),
+  die: I("<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" />  <path d=\"M16 8h.01\" />  <path d=\"M8 8h.01\" />  <path d=\"M8 16h.01\" />  <path d=\"M16 16h.01\" />  <path d=\"M12 12h.01\" />"),
   library: I("<path d=\"m16 6 4 14\" />  <path d=\"M12 6v14\" />  <path d=\"M8 8v12\" />  <path d=\"M4 4v16\" />"),
 };
 $('vlib').innerHTML = IC.library;
@@ -1530,6 +1531,17 @@ function drawCorners() {
     };
     L.append(b);
   });
+  // On a blank canvas, a shuffle that re-rolls it all — new palette, new background layout, new pattern seed
+  if (isCanvas()) {
+    const b = document.createElement('button'); b.setAttribute('aria-label', 'Shuffle canvas'); b.title = 'Shuffle canvas'; b.innerHTML = IC.die;
+    b.onclick = () => {
+      const cur = JSON.stringify(palette); let P;
+      do { P = PALETTES[Math.floor(Math.random() * PALETTES.length)]; } while (JSON.stringify(P) === cur && PALETTES.length > 1);
+      palette = P.slice(); paletteSrc = palette.slice(); paletteAuto = false; seed = Math.floor(Math.random() * 1e6); cache = null;
+      drawSwatches(); schedule();
+    };
+    L.prepend(b);
+  }
   L.classList.toggle('hidden', !L.children.length);
 }
 function drawAll() {
