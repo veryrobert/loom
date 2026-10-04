@@ -714,8 +714,12 @@ function extractPalette() {
 
 // ---------- layout ----------
 function layout() {
-  const r = ratio(); let w = innerWidth, h = w / r; if (h > innerHeight) { h = innerHeight; w = h * r; }
-  out.style.width = w + 'px'; out.style.height = h + 'px'; out.style.left = (innerWidth - w) / 2 + 'px'; out.style.top = (innerHeight - h) / 2 + 'px';
+  // Fit the artboard between the top bar and the tab bar (tab controls may still float over it)
+  const bar = $('vbar').getBoundingClientRect(), tabs = $('tabs').getBoundingClientRect(), gap = 10;
+  const top = bar.height ? bar.bottom + gap : gap, bottom = tabs.height ? tabs.top - gap : innerHeight - gap;
+  const aw = innerWidth - gap * 2, ah = Math.max(80, bottom - top);
+  const r = ratio(); let w = aw, h = w / r; if (h > ah) { h = ah; w = h * r; }
+  out.style.width = w + 'px'; out.style.height = h + 'px'; out.style.left = (innerWidth - w) / 2 + 'px'; out.style.top = top + (ah - h) / 2 + 'px';
   let k = Math.min(window.devicePixelRatio || 1, 2) * (interactive ? 0.5 : 1) * (vid && !vid.paused ? 0.6 : 1);
   if (recording) k = recLong / Math.max(w, h);
   const W = Math.round(w * k), H = Math.round(h * k);
@@ -923,13 +927,14 @@ const PATCH_ITEMS = [S_('pcover', 'Coverage', IC.cover, 0.05, 0.95, 0.01), S_('p
   A_('Shuffle patches', IC.shuffle, () => { pseed = Math.floor(Math.random() * 1e6); })];
 let pseed = 3;
 function SPLIT_ITEMS() { return v.split === 'patch' ? [SPLIT_CHOICE, ...PATCH_ITEMS] : v.split === 1 ? [SPLIT_CHOICE] : [SPLIT_CHOICE, SIDE_ITEM]; }
-const CROP_REST = [
+const COMPARE_ITEM = { t: 'h', label: 'Hold to compare', icon: IC.compare, left: true };
+// Crop is framing only (opened from the top bar); Mask is where the pattern meets the photo
+const CROP_ITEMS = [
     C_('format', 'Format', IC.format, FORMATS),
     S_('zoom', 'Zoom', IC.zoom, 1, 6, 0.01),
     Object.assign(A_('Reset position', IC.reset, () => { v.panX = v.panY = 0; v.zoom = 1; }), { left: true }),
-    { t: 'h', label: 'Hold to compare', icon: IC.compare, left: true },
-];
-function CROP_ITEMS() { return [CROP_REST[0], ...SPLIT_ITEMS(), ...CROP_REST.slice(1)]; }
+    COMPARE_ITEM];
+function MASK_ITEMS() { return [...SPLIT_ITEMS(), COMPARE_ITEM]; }
 const TABS = [
   { id: 'pattern', label: 'Pattern', icon: IC.pattern, get items() { return v.mode === 'none' ? [MODE_ITEM] : v.mode === 'shapes' ? SHAPE_ITEMS : v.mode === 'glyph' ? GLYPH_ITEMS : v.mode === 'dither' ? DITHER_ITEMS : v.mode === 'martens' ? MARTENS_ITEMS : WEAVE_ITEMS; } },
   // Adjust: the photo itself. Texture: what's laid over the result (grain, glow, blend, dither finish)
@@ -948,9 +953,11 @@ const TABS = [
       .map(it => when(it, () => v.mode !== 'dither' && v.dither !== 'off'))] },
   // Scale: one size for every pattern, plus Density zones that vary it across the image (hidden for None)
   { id: 'scale', label: 'Scale', icon: IC.cell, items: [SCALE_ITEM, ...DENSITY_ITEMS] },
-  { id: 'crop', label: 'Crop', icon: IC.crop, get items() { return CROP_ITEMS(); } },
+  { id: 'mask', label: 'Mask', icon: IC.split, get items() { return MASK_ITEMS(); } },
+  // Crop isn't in the bar — the top-right crop button opens it
+  { id: 'crop', label: 'Crop', icon: IC.crop, hidden: true, items: CROP_ITEMS },
 ];
-let tabId = null; const selIdx = { adjust: 0, colour: 0, pattern: 0, scale: 0, texture: 0, crop: 0 };
+let tabId = null; const selIdx = { adjust: 0, colour: 0, pattern: 0, scale: 0, texture: 0, mask: 0, crop: 0 };
 const curTab = () => TABS.find(t => t.id === tabId);
 const tick = () => curTab().items.filter(it => (it.t === 's' || it.t === 'c') && isShown(it));
 const corner = () => curTab().items.filter(it => (it.t === 'a' || it.t === 't' || it.t === 'h' || it.t === 'k') && isShown(it));
@@ -964,7 +971,7 @@ function ringSVG(n) {
 function drawTabs() {
   const nav = $('tabs'); nav.innerHTML = '';
   if (v.mode === 'none' && tabId === 'scale') tabId = null;
-  TABS.filter(t => !(v.mode === 'none' && t.id === 'scale')).forEach(t => {
+  TABS.filter(t => !t.hidden && !(v.mode === 'none' && t.id === 'scale')).forEach(t => {
     const b = document.createElement('button'); b.className = 'tab'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', t.id === tabId);
     b.innerHTML = t.icon + `<span>${t.label}</span>`; b.onclick = () => {
       // Pattern always lands on the Mode overview: tapping it inside a pattern's settings goes back there,
@@ -1569,6 +1576,8 @@ $('libSaveBtn').onclick = async () => {
 // stagger, dither square sizes, grain)
 $('vshuffle').innerHTML = IC.shuffle;
 $('vshuffle').onclick = () => { if (!img) return; seed = Math.floor(Math.random() * 1e6); cache = null; flash('Shuffled'); schedule(); };
+$('vcrop').innerHTML = IC.crop;
+$('vcrop').onclick = () => { if (!img) return; tabId = tabId === 'crop' ? null : 'crop'; if (tabId) rawPreview = false; builtTab = null; drawAll(); schedule(); };
 $('vsave').onclick = async () => {
   if (!img) return;
   const modeName = (MODE_ITEM.opts.find(o => o[0] === v.mode) || [, 'Style'])[1];
