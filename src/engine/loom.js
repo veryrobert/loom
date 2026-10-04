@@ -1459,15 +1459,11 @@ function drawLibrary() {
 }
 const MODE_MARK = { none: '○', shapes: '◆', glyph: '✦', dither: '▦', martens: '▨', weave: '≋' };
 const modeName = m => (MODE_ITEM.opts.find(o => o[0] === m) || [, m])[1];
-// One square tile: media (or a big mark), a caption on hover, and corner buttons
-function galTile(media, caption, onOpen, buttons) {
-  const t = document.createElement('div'); t.className = 'gal-tile'; t.tabIndex = 0;
+// A tile is just the picture at its natural shape (masonry); tapping opens it large with its actions
+function galTile(media, label, onOpen) {
+  const t = document.createElement('button'); t.className = 'gal-tile'; t.setAttribute('aria-label', label);
   if (typeof media === 'string') { const m = document.createElement('div'); m.className = 'gal-mark'; m.textContent = media; t.append(m); } else t.append(media);
-  const cap = document.createElement('div'); cap.className = 'gal-cap'; cap.textContent = caption; t.append(cap);
-  const tools = document.createElement('div'); tools.className = 'gal-tools';
-  buttons.forEach(([label, text, fn]) => { const b = document.createElement('button'); b.setAttribute('aria-label', label); b.title = label; b.textContent = text; b.onclick = e => { e.stopPropagation(); fn(t); }; tools.append(b); });
-  t.append(tools);
-  t.onclick = onOpen; t.onkeydown = e => { if (e.key === 'Enter') onOpen(); };
+  t.onclick = onOpen;
   return t;
 }
 async function renderLibList() {
@@ -1478,55 +1474,55 @@ async function renderLibList() {
     const items = await listPresets();
     if (!items.length) return empty('No saved styles yet. Save the current look above, or with the save button in the top bar.');
     items.forEach(p => {
-      let media = MODE_MARK[p.mode] || '◆';
-      if (p.thumb) { media = document.createElement('img'); media.src = p.thumb; media.alt = ''; }
-      box.append(galTile(media, p.name + ' · ' + modeName(p.mode), () => applyPreset(p), [
-        ['Rename', '✎', async tile => {
-          // Rename in place: the caption becomes a text field; Enter or leaving it saves
-          const inp = document.createElement('input'); inp.className = 'gal-rename'; inp.value = p.name; inp.maxLength = 40;
-          inp.onclick = ev => ev.stopPropagation(); tile.querySelector('.gal-cap').replaceWith(inp); tile.classList.add('editing'); inp.focus(); inp.select();
-          let done = false;
-          const commit = async () => { if (done) return; done = true; const n = inp.value.trim(); if (n && n !== p.name) await renamePreset(p.id, n); renderLibList(); };
-          inp.onkeydown = ev => { ev.stopPropagation(); if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') { done = true; renderLibList(); } };
-          inp.onblur = commit;
-        }],
-        ['Delete', '×', async () => { await deletePreset(p.id); renderLibList(); }],
-      ]));
+      const media = () => { if (!p.thumb) return MODE_MARK[p.mode] || '◆'; const i = document.createElement('img'); i.src = p.thumb; i.alt = ''; return i; };
+      box.append(galTile(media(), p.name, () => openGalView({
+        media: media(), name: p.name, meta: modeName(p.mode) + ' · ' + new Date(p.createdAt).toLocaleDateString(),
+        actions: [['Use this look', () => { closeGalView(); applyPreset(p); }, true],
+          ['Rename', () => renameInView(p.name, async n => { await renamePreset(p.id, n); p.name = n; renderLibList(); })],
+          ['Delete', async () => { await deletePreset(p.id); closeGalView(); renderLibList(); }]],
+      })));
     });
   } else if (lib.tab === 'files') {
     const items = await listFiles();
     if (!items.length) return empty('No photos or videos yet');
-    items.forEach(f => {
-      const tile = galTile(thumbEl(f, box), f.name, () => reopenFile(f), [['Delete', '×', async () => { await deleteFile(f.id); renderLibList(); drawRecent(); }]]);
-      if (f.type.startsWith('video/')) tile.insertAdjacentHTML('beforeend', '<span class="recent-play">▶</span>');
-      box.append(tile);
-    });
+    items.forEach(f => box.append(galTile(thumbEl(f, box), f.name, () => openGalView({
+      media: thumbEl(f, $('galMedia')), name: f.name, meta: new Date(f.createdAt).toLocaleDateString() + ' · ' + formatBytes(f.size),
+      actions: [['Open', () => { closeGalView(); reopenFile(f); }, true],
+        ['Delete', async () => { await deleteFile(f.id); closeGalView(); renderLibList(); drawRecent(); }]],
+    }))));
   } else {
     const items = await listDownloads();
     if (!items.length) return empty('Nothing exported yet. Your downloads appear here.');
     items.forEach(d => {
-      const isImg = d.mime.startsWith('image/'), isVid = d.mime.startsWith('video/');
-      const media = isImg || isVid ? thumbEl({ type: d.mime, blob: d.blob }, box) : (d.mime.includes('pdf') ? 'PDF' : '↓');
-      const tile = galTile(media, d.filename + ' · ' + formatBytes(d.size), () => openGalView(d), [['Delete', '×', async () => { await deleteDownload(d.id); renderLibList(); }]]);
-      if (isVid) tile.insertAdjacentHTML('beforeend', '<span class="recent-play">▶</span>');
-      box.append(tile);
+      const media = into => d.mime.startsWith('image/') || d.mime.startsWith('video/') ? thumbEl({ type: d.mime, blob: d.blob }, into) : (d.mime.includes('pdf') ? 'PDF' : '↓');
+      box.append(galTile(media(box), d.filename, () => openGalView({
+        media: media($('galMedia')), name: d.filename, meta: new Date(d.createdAt).toLocaleDateString() + ' · ' + formatBytes(d.size),
+        actions: [['Download', () => redownload(d.id), true],
+          ['Delete', async () => { await deleteDownload(d.id); closeGalView(); renderLibList(); }]],
+      })));
     });
   }
 }
-// Large view of a creation, with download and delete
-let galUrl = null;
-function openGalView(d) {
+// Large view: the picture, its name and details, and its actions (the first one is the main action)
+function openGalView({ media, name, meta, actions }) {
+  // galMedia is emptied (and its URLs released) on close, so don't clear here — media was made for it
   const m = $('galMedia'); m.innerHTML = '';
-  galUrl = URL.createObjectURL(d.blob);
-  if (d.mime.startsWith('video/')) { const el = document.createElement('video'); el.src = galUrl; el.controls = true; el.autoplay = true; el.muted = true; el.loop = true; el.playsInline = true; m.append(el); }
-  else if (d.mime.startsWith('image/')) { const el = document.createElement('img'); el.src = galUrl; el.alt = d.filename; m.append(el); }
-  else { const el = document.createElement('div'); el.className = 'gal-mark'; el.textContent = d.mime.includes('pdf') ? 'PDF' : '↓'; m.append(el); }
-  $('galName').textContent = d.filename + ' · ' + new Date(d.createdAt).toLocaleDateString() + ' · ' + formatBytes(d.size);
-  $('galDl').onclick = () => redownload(d.id);
-  $('galDel').onclick = async () => { await deleteDownload(d.id); closeGalView(); renderLibList(); };
+  if (typeof media === 'string') { const el = document.createElement('div'); el.className = 'gal-mark'; el.textContent = media; m.append(el); }
+  else { if (media.tagName === 'VIDEO') { media.controls = true; media.autoplay = true; media.loop = true; } m.append(media); }
+  $('galName').textContent = name; $('galMeta').textContent = meta;
+  const bar = $('galActions'); bar.innerHTML = '';
+  actions.forEach(([label, fn, primary]) => { const b = document.createElement('button'); b.textContent = label; if (primary) b.className = 'primary'; b.onclick = fn; bar.append(b); });
   $('galView').classList.remove('hidden');
 }
-function closeGalView() { $('galView').classList.add('hidden'); $('galMedia').innerHTML = ''; if (galUrl) { URL.revokeObjectURL(galUrl); galUrl = null; } }
+function renameInView(cur, save) {
+  const nameEl = $('galName'), inp = document.createElement('input'); inp.className = 'gal-rename'; inp.value = cur; inp.maxLength = 40;
+  nameEl.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = async ok => { if (done) return; done = true; const n = inp.value.trim(); inp.replaceWith(nameEl); if (ok && n && n !== cur) { await save(n); nameEl.textContent = n; } };
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); };
+  inp.onblur = () => finish(true);
+}
+function closeGalView() { $('galView').classList.add('hidden'); clearThumbs($('galMedia')); }
 $('galBack').onclick = closeGalView;
 function applyPreset(p) {
   const { __seed, __palette, __paletteSrc, ...rest } = p.state;
@@ -1557,7 +1553,7 @@ const thumbUrls = new WeakMap();
 function thumbEl(f, box) {
   const url = URL.createObjectURL(f.blob); (thumbUrls.get(box) || thumbUrls.set(box, []).get(box)).push(url);
   if (f.type.startsWith('video/')) { const el = document.createElement('video'); el.muted = true; el.playsInline = true; el.preload = 'metadata'; el.src = url + '#t=0.1'; return el; }
-  const el = document.createElement('img'); el.alt = ''; el.loading = 'lazy'; el.src = url; return el;
+  const el = document.createElement('img'); el.alt = ''; el.src = url; return el; // no async decoding: masonry tiles inside columns weren't painting with it
 }
 function clearThumbs(box) { (thumbUrls.get(box) || []).forEach(u => URL.revokeObjectURL(u)); thumbUrls.set(box, []); box.innerHTML = ''; }
 // Loading screen: the last few photos/videos as one-tap thumbnails, plus a way into the full gallery
