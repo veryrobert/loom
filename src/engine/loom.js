@@ -27,7 +27,7 @@ const v = {
   ddither: 'ordered', ddlevels: 2, ddsize: 2, ddpal: true,
   // Glyph mode = Glyph mix's look, on its own keys
   gcell: 9, gsize: 0.55, ghalf: 0.55, gjitter: 0.45, gset: 'classic', ginvert: false,
-  mode: 'shapes', cell: 12, ssize: 0.8, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', snoise: 0, jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
+  mode: 'shapes', cell: 12, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', snoise: 0, jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
   mdir: 'h', mpitch: 10, mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30, minvert: false,
   // Shapes-engine line mode, set only by renderMartens: sline '' = off / 'h' / 'v'
   slevels: 0, sline: '', sseg: 2, sstagger: 1, sthresh: 0.5, sfull: 0.9, sangle: 30,
@@ -375,8 +375,9 @@ function shapeGeometry(W, H, u, S) {
     else col = v.cmode === 'image' ? rgb2hex(avg.map(c => Math.round(c / 4) * 4)) : shown[idx];
     let L = groups.get(col); if (!L) { L = []; groups.set(col, L); }
     const mx = x0 + cs / 2, my = y0 + cs / 2, d = cs * sz;
-    if (shape === 'hline') L.push(['r', x0 - 0.5, my - d * 0.22, (x1 - x0) + 1, d * 0.44]);
-    else if (shape === 'vbar') L.push(['r', mx - d * 0.27, y0 - 0.5, d * 0.54, (y1 - y0) + 1]);
+    // Bar width scales lines/bars across their cell, up to touching neighbours (no gap) at most
+    if (shape === 'hline') { const t = Math.min(y1 - y0 + 1, d * 0.44 * v.sbarw); L.push(['r', x0 - 0.5, my - t / 2, (x1 - x0) + 1, t]); }
+    else if (shape === 'vbar') { const t = Math.min(x1 - x0 + 1, d * 0.54 * v.sbarw); L.push(['r', mx - t / 2, y0 - 0.5, t, (y1 - y0) + 1]); }
     else if (shape.startsWith('ch:')) L.push(['t', mx, my, d, shape.slice(3)]);
     else L.push(...glyphOps(shape, mx, my, d));
   }
@@ -404,7 +405,7 @@ function ditherFinish(W, H, u) {
 }
 function renderShapes(W, H, g, u, live) {
   drawSource(W, H);
-  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.snoise, v.jitter, v.stone, v.mode, v.gset, v.ginvert, v.minvert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
+  const pkey = JSON.stringify(['shapes', W, H, v.zoom, v.panX, v.panY, palette, v.cmode, v.cell, v.ssize, v.sbarw, v.halftone, v.sset, v.sby, v.bandRows, v.ground, v.groundColor, v.snoise, v.jitter, v.stone, v.mode, v.gset, v.ginvert, v.minvert, v.slevels, v.sline, v.sseg, v.sstagger, v.sthresh, v.sfull, v.sangle, seed, imgId]);
   let base;
   if (live && cache && cache.pkey === pkey) base = cache.P;
   else {
@@ -758,7 +759,8 @@ const WEAVE_ITEMS = [MODE_ITEM,
     S_('noise', 'Noise', IC.noise, 0, 80, 1), S_('accents', 'Tick rules', IC.ruler, 0, 12, 1), ...DENSITY_ITEMS];
 const SSET_ITEM = Object.assign(C_('sset', 'Shapes', IC.shapes, [['mixed', 'Mixed'], ['dot', 'Dots'], ['square', 'Squares'], ['diamond', 'Diamonds'], ['hline', 'Lines'], ['vbar', 'Bars'], ['cross', 'Crosses'], ['triangle', 'Triangles'], ['arrow', 'Arrows'], ['ring', 'Rings'], ['x', 'Diagonal cross']]));
 const SHAPE_ITEMS = [MODE_ITEM, SSET_ITEM,
-    S_('cell', 'Cell size', IC.cell, 3, 40, 1), S_('ssize', 'Shape size', IC.dot, 0.2, 1.3, 0.01), S_('halftone', 'Halftone', IC.halftone, 0, 1, 0.01),
+    S_('cell', 'Cell size', IC.cell, 3, 40, 1), S_('ssize', 'Shape size', IC.dot, 0.2, 1.3, 0.01),
+    when(S_('sbarw', 'Bar width', IC.width, 0.5, 3, 0.01), () => ['hline', 'vbar', 'mixed'].includes(v.sset)), S_('halftone', 'Halftone', IC.halftone, 0, 1, 0.01),
     C_('sby', 'Shape by', IC.bands, [['tone', 'Tone'], ['rows', 'Rows']]), when(S_('bandRows', 'Band height', IC.rows, 1, 24, 1), () => v.sby === 'rows'),
     S_('jitter', 'Shape mix', IC.wind, 0, 1, 0.01),
     A_('Shuffle', IC.shuffle, () => { seed = Math.floor(Math.random() * 1e6); }),
