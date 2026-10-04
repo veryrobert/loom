@@ -715,13 +715,11 @@ function extractPalette() {
 // ---------- layout ----------
 function layout() {
   // Fit the artboard between the top bar and the tab bar (tab controls may still float over it)
-  // On desktop the settings are a left sidebar, so the artboard takes the space to its right instead
   const bar = $('vbar').getBoundingClientRect(), tabs = $('tabs').getBoundingClientRect(), gap = 10;
-  const side = matchMedia('(min-width: 900px)').matches ? $('dock').getBoundingClientRect().right : 0;
-  const top = bar.height ? bar.bottom + gap : gap, bottom = side || !tabs.height ? innerHeight - gap * 2 : tabs.top - gap;
-  const x0 = side + gap * (side ? 2 : 1), aw = innerWidth - x0 - gap * (side ? 2 : 1), ah = Math.max(80, bottom - top);
+  const top = bar.height ? bar.bottom + gap : gap, bottom = tabs.height ? tabs.top - gap : innerHeight - gap;
+  const aw = innerWidth - gap * 2, ah = Math.max(80, bottom - top);
   const r = ratio(); let w = aw, h = w / r; if (h > ah) { h = ah; w = h * r; }
-  out.style.width = w + 'px'; out.style.height = h + 'px'; out.style.left = x0 + (aw - w) / 2 + 'px'; out.style.top = top + (ah - h) / 2 + 'px';
+  out.style.width = w + 'px'; out.style.height = h + 'px'; out.style.left = (innerWidth - w) / 2 + 'px'; out.style.top = top + (ah - h) / 2 + 'px';
   let k = Math.min(window.devicePixelRatio || 1, 2) * (interactive ? 0.5 : 1) * (vid && !vid.paused ? 0.6 : 1);
   if (recording) k = recLong / Math.max(w, h);
   const W = Math.round(w * k), H = Math.round(h * k);
