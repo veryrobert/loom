@@ -432,7 +432,7 @@ function addOp(P, o) {
   else { const q = o[1]; P.moveTo(q[0], q[1]); for (let i = 2; i < q.length; i += 2) P.lineTo(q[i], q[i + 1]); P.closePath(); }
 }
 
-// The Dither tab as a finish over the treated layer — Weave dithers inside its own pipeline instead
+// The Dither tab as a finish over the treated layer — Pixel (internally 'weave') dithers inside its own pipeline instead
 function ditherFinish(W, H, u) {
   if (v.dither === 'off' || !W || !H) return;
   const d = fctx.getImageData(0, 0, W, H); dither(d.data, W, H, u, palette.map(hex2rgb)); fctx.putImageData(d, 0, 0);
@@ -765,7 +765,7 @@ const A_ = (label, icon, fn) => ({ t: 'a', label, icon, fn });
 const FORMATS = [['image', 'Original'], ['screen', 'Full screen'], ['1', 'Square'], ['0.8', '4:5'], ['0.75', '3:4'], ['0.6667', '2:3'], ['0.5625', '9:16'], ['1.7778', '16:9'], ['1.3333', '4:3'], ['1.5', '3:2'], ['0.7071', 'A4'], ['1.4142', 'A4 wide']];
 // Switch to hide Martens from the Mode picker without removing it
 const MARTENS_ON = true;
-const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['shapes', 'Shapes'], ['weave', 'Weave'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : [])]), { onPick: () => {
+const MODE_ITEM = Object.assign(C_('mode', 'Mode', IC.layout, [['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : [])]), { onPick: () => {
   builtTab = null; selIdx.pattern = 0; selIdx.colour = 0;
   primeMode();
 } });
@@ -1397,7 +1397,7 @@ async function renderLibList() {
       const row = libRow(
         p.mode === 'shapes' ? '◆' : p.mode === 'glyph' ? '✦' : p.mode === 'dither' ? '▦' : p.mode === 'martens' ? '▨' : '≋',
         p.name,
-        new Date(p.createdAt).toLocaleDateString() + ' · ' + p.mode,
+        new Date(p.createdAt).toLocaleDateString() + ' · ' + ((MODE_ITEM.opts.find(o => o[0] === p.mode) || [, p.mode])[1]),
         () => applyPreset(p),
         () => deletePreset(p.id),
       );
