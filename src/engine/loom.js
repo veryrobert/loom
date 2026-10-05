@@ -93,7 +93,29 @@ function drawSource(W, H) {
   const s = Math.max(W / iw, H / ih) * v.zoom, dw = iw * s, dh = ih * s;
   const mx = (dw - W) / 2 / L, my = (dh - H) / 2 / L;
   v.panX = Math.max(-mx, Math.min(mx, v.panX)); v.panY = Math.max(-my, Math.min(my, v.panY));
-  sctx.drawImage(img, (W - dw) / 2 + v.panX * L, (H - dh) / 2 + v.panY * L, dw, dh);
+  sctx.imageSmoothingEnabled = true; sctx.imageSmoothingQuality = 'high'; // resizing the canvas resets these
+  sctx.drawImage(mipFor(dw), (W - dw) / 2 + v.panX * L, (H - dh) / 2 + v.panY * L, dw, dh);
+}
+// A camera photo is several times the size it's shown at, and shrinking it in one go makes fine detail
+// jagged. So photos get a chain of copies, each half the size of the last (each step a clean 2:1 shrink),
+// and drawing uses the smallest copy that's still at least as wide as needed. Video frames change every
+// frame, so video is drawn directly
+let mips = null, mipsFor = -1;
+function mipFor(dw) {
+  if (vid || !img || isCanvas()) return img;
+  if (mipsFor !== imgId) {
+    mips = [img]; mipsFor = imgId;
+    let w = srcW(), h = srcH(), prev = img;
+    while (w > 160) {
+      w = Math.round(w / 2); h = Math.round(h / 2);
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(prev, 0, 0, w, h);
+      mips.push(c); prev = c;
+    }
+  }
+  let best = mips[0];
+  for (const m of mips) if ((m.naturalWidth || m.width) >= dw) best = m; // largest-first, so this ends on the smallest that's big enough
+  return best;
 }
 const BAYER = (() => { let b = [[0]]; for (let k = 0; k < 3; k++) { const n = b.length, nb = Array.from({ length: n * 2 }, () => new Array(n * 2)); for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const q = b[y][x] * 4; nb[y][x] = q; nb[y][x + n] = q + 2; nb[y + n][x] = q + 3; nb[y + n][x + n] = q + 1; } b = nb; } return b; })();
 // `o` picks which settings drive it: the Dither tab's finish by default, or Dither mode's own
