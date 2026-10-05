@@ -1048,27 +1048,48 @@ function render(W, H, target) {
 
 
 // ---------- palette ----------
+// Colours are grouped in Lab (perceptual) space with lightness at half weight, so a palette is chosen by hue
+// and colour first rather than spent on several near-identical shadow tones. Each colour is then the average
+// of its group's lighter 60%, the mid-tones you notice rather than the shadows, with a gentle colour lift
+// that keeps lightness. (The old version clustered in RGB, which filled the palette with dark browns.)
+const srgbLin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+const linSrgb = c => 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055);
+const labF = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116, labFi = t => t ** 3 > 0.008856 ? t ** 3 : (t - 16 / 116) / 7.787;
+function rgb2lab(c) {
+  const r = srgbLin(c[0]), g = srgbLin(c[1]), b = srgbLin(c[2]);
+  const fx = labF((r * .4124 + g * .3576 + b * .1805) / .95047), fy = labF(r * .2126 + g * .7152 + b * .0722), fz = labF((r * .0193 + g * .1192 + b * .9505) / 1.08883);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+function lab2rgb([L, a, bb]) {
+  const fy = (L + 16) / 116, X = labFi(fy + a / 500) * .95047, Y = labFi(fy), Z = labFi(fy - bb / 200) * 1.08883;
+  return [X * 3.2406 - Y * 1.5372 - Z * .4986, -X * .9689 + Y * 1.8758 + Z * .0415, X * .0557 - Y * .2040 + Z * 1.0570].map(c => Math.max(0, Math.min(255, linSrgb(Math.max(0, c)))));
+}
 function extractPalette() {
   const c = document.createElement('canvas'), w = 160, h = Math.max(1, Math.round(160 * srcH() / srcW()));
-  c.width = w; c.height = h; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, w, h);
+  c.width = w; c.height = h; const g = c.getContext('2d', { willReadFrequently: true }); g.imageSmoothingQuality = 'high'; g.drawImage(img, 0, 0, w, h);
   const D = g.getImageData(0, 0, w, h).data, px = [];
-  for (let i = 0; i < D.length; i += 8) px.push([D[i], D[i + 1], D[i + 2]]);
+  for (let i = 0; i < D.length; i += 8) { const l = rgb2lab([D[i], D[i + 1], D[i + 2]]); px.push([l[0] * 0.5, l[1], l[2]]); }
   const k = v.kcount, r = mulberry(11), d2 = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
-  // k-means++ start: spread the starting colours apart so distinct hues get their own cluster
+  // k-means++ start: spread the starting colours apart, favouring colourful ones so distinct hues get a slot
   const cent = [px[Math.floor(r() * px.length)].slice()];
   while (cent.length < k) {
     let far = px[0], fd = -1;
-    for (let i = 0; i < px.length; i += 3) { const p = px[i]; let m = 1e9; for (const q of cent) m = Math.min(m, d2(p, q)); const sat = Math.max(...p) - Math.min(...p); const sc = m * (1 + sat / 128); if (sc > fd) { fd = sc; far = p; } }
+    for (let i = 0; i < px.length; i += 3) { const p = px[i]; let m = 1e9; for (const q of cent) m = Math.min(m, d2(p, q)); const sc = m * (1 + Math.hypot(p[1], p[2]) / 40); if (sc > fd) { fd = sc; far = p; } }
     cent.push(far.slice());
   }
+  const nearestC = p => { let bi = 0, bd = 1e9; for (let j = 0; j < cent.length; j++) { const dd = d2(p, cent[j]); if (dd < bd) { bd = dd; bi = j; } } return bi; };
   for (let it = 0; it < 14; it++) {
     const acc = cent.map(() => [0, 0, 0, 0]);
-    for (const p of px) { let bi = 0, bd = 1e9; for (let j = 0; j < cent.length; j++) { const dd = d2(p, cent[j]); if (dd < bd) { bd = dd; bi = j; } } const a = acc[bi]; a[0] += p[0]; a[1] += p[1]; a[2] += p[2]; a[3]++; }
+    for (const p of px) { const a = acc[nearestC(p)]; a[0] += p[0]; a[1] += p[1]; a[2] += p[2]; a[3]++; }
     acc.forEach((a, j) => { if (a[3]) cent[j] = [a[0] / a[3], a[1] / a[3], a[2] / a[3]]; });
   }
-  // averaging mutes colour, so lift each cluster's saturation back up
-  const out = cent.map(c => { const L = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; return c.map(x => Math.max(0, Math.min(255, L + (x - L) * 1.3))); });
-  out.sort((a, b) => (a[0] * .3 + a[1] * .59 + a[2] * .11) - (b[0] * .3 + b[1] * .59 + b[2] * .11));
+  const groups = cent.map(() => []); for (const p of px) groups[nearestC(p)].push(p);
+  const out = groups.filter(gr => gr.length).map(gr => {
+    gr.sort((a, b) => a[0] - b[0]);
+    const top = gr.slice(Math.floor(gr.length * 0.4)), m = [0, 0, 0];
+    for (const p of top) { m[0] += p[0]; m[1] += p[1]; m[2] += p[2]; }
+    return { L: m[0] * 2 / top.length, rgb: lab2rgb([m[0] * 2 / top.length, m[1] / top.length * 1.15, m[2] / top.length * 1.15]) };
+  }).sort((a, b) => a.L - b.L).map(o => o.rgb);
   palette = out.map(rgb2hex); paletteSrc = palette.slice(); paletteAuto = true;
 }
 
