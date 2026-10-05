@@ -1088,7 +1088,8 @@ function layout() {
   const x0 = desk ? DESK_LEFT : gap, aw = innerWidth - x0 - gap, ah = Math.max(80, bottom - top);
   const r = ratio(); let w = aw, h = w / r; if (h > ah) { h = ah; w = h * r; }
   out.style.width = w + 'px'; out.style.height = h + 'px'; out.style.left = x0 + (aw - w) / 2 + 'px'; out.style.top = top + (ah - h) / 2 + 'px';
-  let k = Math.min(window.devicePixelRatio || 1, 2) * (interactive ? 0.5 : 1) * (vid && !vid.paused ? 0.6 : 1);
+  // Full screen sharpness (3× on iPhones) when still, capped at ~3.5M pixels; half that while dragging or pinching
+  let k = Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(3.5e6 / Math.max(1, w * h))) * (interactive ? 0.5 : 1) * (vid && !vid.paused ? 0.6 : 1);
   if (recording) k = recLong / Math.max(w, h);
   const W = Math.round(w * k), H = Math.round(h * k);
   // A fresh image shows unprocessed until any setting changes — not only on opening a tab, since a
@@ -1743,6 +1744,11 @@ out.addEventListener('pointerup', e => {
   pts.delete(e.pointerId); if (pts.size < 2) pinch0 = null; if (!pts.size && interactive) { interactive = false; schedule(); }
 });
 out.addEventListener('pointercancel', e => { pts.delete(e.pointerId); pinch0 = null; if (!pts.size) { interactive = false; schedule(); } });
+// iPhone can end a pinch without an up or cancel for one finger, which left the artwork stuck rendering at
+// half resolution. Losing capture also counts as lifting, and once no finger is down anywhere, drawing goes
+// back to full resolution whatever happened
+out.addEventListener('lostpointercapture', e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = null; if (!pts.size && interactive) { interactive = false; schedule(); } });
+addEventListener('touchend', e => { if (!e.touches.length) { pts.clear(); pinch0 = null; if (interactive) { interactive = false; schedule(); } } }, { passive: true });
 out.addEventListener('wheel', e => { if (!img) return; e.preventDefault(); const k = Math.exp(-e.deltaY * 0.0015); if (maskMode()) v.mscale = Math.min(4, Math.max(0.25, v.mscale * k)); else v.zoom = Math.min(6, Math.max(1, v.zoom * k)); schedule(); }, { passive: false });
 function maskMode() { return v.maskMove && v.split === 'patch'; }
 
