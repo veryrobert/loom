@@ -1182,8 +1182,22 @@ const MARTENS_ON = true;
 // Pattern list. Its round button is hidden: tapping the Pattern tab is how you get back to it
 const MODE_ITEM = Object.assign(C_('mode', 'Pattern', IC.layout, [['none', 'None'], ['shapes', 'Shapes'], ['weave', 'Pixel'], ['glyph', 'Glyph'], ['dither', 'Dither'], ...(MARTENS_ON ? [['martens', 'Martens']] : []), ['glass', 'Glass'], ['blobs', 'Blobs'], ['diffuse', 'Diffuse']]), { hideButton: true, onPick: () => {
   builtTab = null; selIdx.pattern = 0; selIdx.colour = 0; settleArt();
-  primeMode();
+  swapPalette(); primeMode();
 } });
+// Glyph, Martens and Dither start black-and-white, so each keeps its own palette; every other pattern shares
+// one. Switching patterns parks the outgoing palette and brings back the incoming one, so clicking through
+// Glyph and back leaves Shapes in the colours it had
+const palGroupOf = m => m === 'glyph' || m === 'martens' || m === 'dither' ? m : 'colour';
+let palGroup = palGroupOf(v.mode), palMem = {};
+function swapPalette() {
+  const to = palGroupOf(v.mode); if (to === palGroup) return;
+  palMem[palGroup] = { palette: palette.slice(), paletteSrc: paletteSrc.slice(), paletteAuto };
+  const m = palMem[to]; palGroup = to;
+  if (m === 'extract') { if (img) extractPalette(); }
+  else if (m) { palette = m.palette.slice(); paletteSrc = m.paletteSrc.slice(); paletteAuto = m.paletteAuto; }
+}
+// A new style (preset, pasted style, reset, restored session) brings its own colours: start the memory over
+const resetPalMem = () => { palGroup = palGroupOf(v.mode); palMem = {}; };
 let shapesPrimed = false, weavePrimed = false, ditherPrimed = false, glyphModePrimed = false, martensPrimed = false;
 // First-visit setup for a mode — run on picking it, and for the default mode at start and after a reset
 function primeMode() {
@@ -1590,13 +1604,14 @@ function saveSession() {
   if (!img || (currentFileId == null && !isCanvas())) return;
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify({ fileId: isCanvas() ? null : currentFileId, canvas: isCanvas(), v, seed, palette, paletteSrc, paletteAuto,
-      primed: { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } }));
+      palMem, primed: { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } }));
   } catch { /* storage full or blocked: nothing to restore later, which is fine */ }
 }
 const saveSessionSoon = () => { clearTimeout(sessionT); sessionT = setTimeout(saveSession, 400); };
 function restoreState(st) {
   Object.assign(v, st.v); if (typeof st.seed === 'number') seed = st.seed;
   if (Array.isArray(st.palette) && st.palette.length) { palette = st.palette.slice(); paletteSrc = (st.paletteSrc || st.palette).slice(); paletteAuto = !!st.paletteAuto; }
+  resetPalMem(); if (st.palMem && typeof st.palMem === 'object') palMem = st.palMem;
   if (st.primed) ({ shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } = { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed, ...st.primed });
   rawPreview = false; cache = null; builtTab = null;
 }
@@ -1626,7 +1641,7 @@ function loadFile(f, opts) {
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
   const im = new Image();
-  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); saveSessionSoon(); };
+  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); saveSessionSoon(); };
   im.onerror = () => { hideLoading(); flash("Couldn't open that image"); };
   showLoading();
   im.src = URL.createObjectURL(f);
@@ -1641,7 +1656,7 @@ function newCanvas(opts) {
   if (!opts.restore) {
     const P = PALETTES[Math.floor(Math.random() * PALETTES.length)];
     palette = P.slice(); paletteSrc = palette.slice(); paletteAuto = false;
-    seed = Math.floor(Math.random() * 1e6); v.cbase = 'blobs';
+    seed = Math.floor(Math.random() * 1e6); v.cbase = 'blobs'; resetPalMem();
   }
   img = canvasImg; canvasKey = ''; currentFileId = null; v.panX = v.panY = 0; v.zoom = 1;
   if (opts.restore) restoreState(opts.restore);
@@ -1725,7 +1740,7 @@ function loadVideo(f, opts) {
   const ready = () => {
     if (started || !el.videoWidth || el.readyState < 2) return;
     const first = !img; started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
-    if (paletteAuto || !palette.length) extractPalette(); if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
+    if (paletteAuto || !palette.length) extractPalette(); if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
     toast(''); drawAll(); schedule(); showUI(); paintVbar(); frameLoop();
   };
   ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'timeupdate'].forEach(ev => el.addEventListener(ev, ready));
@@ -1761,6 +1776,7 @@ $('vreset').onclick = () => {
   Object.assign(v, D0); seed = 7; shapesPrimed = false; weavePrimed = false; ditherPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
   Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null;
   if (img) extractPalette();
+  resetPalMem();
   drawAll(); schedule(); flash('Settings reset');
 };
 $('vupload').onclick = () => $('file').click();
@@ -2146,6 +2162,7 @@ function applyPreset(p) {
   // Presets saved since 2026-10-04 carry their colours; older ones fall back to the photo's palette
   if (Array.isArray(__palette) && __palette.length) { palette = __palette.slice(); paletteSrc = (Array.isArray(__paletteSrc) && __paletteSrc.length === __palette.length ? __paletteSrc : __palette).slice(); paletteAuto = false; }
   else if (img) extractPalette();
+  resetPalMem();
   closeLibrary(); drawAll(); schedule(); flash('Preset "' + p.name + '" loaded');
 }
 // Thumbnail for a stored image/video. URLs are tracked per container and revoked when it is redrawn
