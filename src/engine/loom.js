@@ -1774,14 +1774,7 @@ function resetSettings() {
   Object.assign(v, D0); seed = 7; shapesPrimed = false; weavePrimed = false; ditherPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
   Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null; resetPalMem();
 }
-let resetArm = 0, resetT = 0;
-const disarmReset = () => { resetArm = 0; clearTimeout(resetT); $('vreset').setAttribute('aria-label', 'Reset'); $('vreset').classList.remove('armed'); };
 $('vreset').onclick = () => {
-  if (Date.now() - resetArm > 3000) {
-    resetArm = Date.now(); $('vreset').setAttribute('aria-label', 'Tap to confirm'); $('vreset').classList.add('armed');
-    flash('Tap again to reset all settings'); clearTimeout(resetT); resetT = setTimeout(disarmReset, 3000); return;
-  }
-  disarmReset(); document.body.classList.remove('menuopen');
   resetSettings();
   if (img) extractPalette();
   drawAll(); schedule(); flash('Settings reset');
@@ -2227,7 +2220,7 @@ $('vshuffle').innerHTML = IC.shuffle;
 $('vshuffle').onclick = () => { if (!img) return; seed = Math.floor(Math.random() * 1e6); cache = null; flash('Shuffled'); schedule(); };
 // Phones: the top bar's actions fold into a burger menu; any choice in it closes it again
 $('vmenu').onclick = e => { e.stopPropagation(); document.body.classList.toggle('menuopen'); };
-$('vbar').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.id !== 'vmenu' && b.id !== 'vreset') document.body.classList.remove('menuopen'); });
+$('vbar').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.id !== 'vmenu') document.body.classList.remove('menuopen'); });
 addEventListener('pointerdown', e => { if (!e.target.closest('#vbar')) document.body.classList.remove('menuopen'); });
 $('vcrop').innerHTML = IC.crop;
 $('vcrop').onclick = () => { if (!img) return; tabId = tabId === 'crop' ? null : 'crop'; if (tabId) rawPreview = false; builtTab = null; drawAll(); schedule(); };

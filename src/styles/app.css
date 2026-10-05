@@ -41,7 +41,6 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
 .vbar{position:fixed; right:14px; top:calc(env(safe-area-inset-top,0px) + 12px); height:44px; border-radius:22px; display:flex; align-items:center; padding:0 6px; z-index:5}
 .vbar button{width:40px; height:40px; display:grid; place-items:center; border-radius:50%}
 .vbar button.on{background:#FF3B30; color:#fff}
-.vbar > button.armed{background:rgba(255,80,60,.85); color:#fff}
 .topL button.on{background:rgba(255,255,255,.94); color:#111}
 /* even padding all round (1px plus the 1px glass border), so one button sits in a true circle and several in a pill with round ends */
 .topL{position:fixed; top:calc(env(safe-area-inset-top,0px) + 12px); height:44px; border-radius:22px; display:flex; align-items:center; padding:1px; gap:2px; z-index:5}
