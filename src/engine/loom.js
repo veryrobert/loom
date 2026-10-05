@@ -1641,7 +1641,7 @@ function loadFile(f, opts) {
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
   const im = new Image();
-  im.onload = () => { const first = !img; img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length) extractPalette(); if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); saveSessionSoon(); };
+  im.onload = () => { const first = !img, wasCanvas = isCanvas(); img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length || wasCanvas) { extractPalette(); if (wasCanvas) resetPalMem(); } if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); saveSessionSoon(); };
   im.onerror = () => { hideLoading(); flash("Couldn't open that image"); };
   showLoading();
   im.src = URL.createObjectURL(f);
@@ -1739,8 +1739,8 @@ function loadVideo(f, opts) {
   let started = false;
   const ready = () => {
     if (started || !el.videoWidth || el.readyState < 2) return;
-    const first = !img; started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
-    if (paletteAuto || !palette.length) extractPalette(); if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
+    const first = !img, wasCanvas = isCanvas(); started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
+    if (paletteAuto || !palette.length || wasCanvas) { extractPalette(); if (wasCanvas) resetPalMem(); } if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
     toast(''); drawAll(); schedule(); showUI(); paintVbar(); frameLoop();
   };
   ['loadedmetadata', 'loadeddata', 'canplay', 'playing', 'timeupdate'].forEach(ev => el.addEventListener(ev, ready));
@@ -1769,10 +1769,14 @@ function paintVbar() {
   $('vplay').innerHTML = vid.paused ? PLAY : PAUSE; $('vplay').setAttribute('aria-label', vid.paused ? 'Play' : 'Pause');
   $('vrec').innerHTML = recording ? STOP : REC; $('vrec').classList.toggle('on', recording); $('vrec').setAttribute('aria-label', recording ? 'Stop' : 'Record');
 }
-let resetArm = 0;
+let resetArm = 0, resetT = 0;
+const disarmReset = () => { resetArm = 0; clearTimeout(resetT); $('vreset').setAttribute('aria-label', 'Reset'); $('vreset').classList.remove('armed'); };
 $('vreset').onclick = () => {
-  if (Date.now() - resetArm > 2500) { resetArm = Date.now(); flash('Tap again to reset all settings'); return; }
-  resetArm = 0;
+  if (Date.now() - resetArm > 3000) {
+    resetArm = Date.now(); $('vreset').setAttribute('aria-label', 'Tap to confirm'); $('vreset').classList.add('armed');
+    flash('Tap again to reset all settings'); clearTimeout(resetT); resetT = setTimeout(disarmReset, 3000); return;
+  }
+  disarmReset(); document.body.classList.remove('menuopen');
   Object.assign(v, D0); seed = 7; shapesPrimed = false; weavePrimed = false; ditherPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
   Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null;
   if (img) extractPalette();
@@ -1787,7 +1791,7 @@ $('vclear').onclick = () => {
   if (recording) return;
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
-  img = null; imgId++; cache = null; currentFileId = null; canvasKey = ''; tabId = null; builtTab = null; rawPreview = false; comparing = false; picking = false;
+  img = null; imgId++; cache = null; currentFileId = null; canvasKey = ''; paletteAuto = true; resetPalMem(); tabId = null; builtTab = null; rawPreview = false; comparing = false; picking = false;
   clearTimeout(sessionT); try { localStorage.removeItem(SESSION_KEY); } catch {}
   document.body.classList.remove('menuopen', 'hideui');
   ['dock', 'vbar', 'topL'].forEach(id => $(id).classList.add('hidden'));
@@ -2211,7 +2215,7 @@ $('vshuffle').innerHTML = IC.shuffle;
 $('vshuffle').onclick = () => { if (!img) return; seed = Math.floor(Math.random() * 1e6); cache = null; flash('Shuffled'); schedule(); };
 // Phones: the top bar's actions fold into a burger menu; any choice in it closes it again
 $('vmenu').onclick = e => { e.stopPropagation(); document.body.classList.toggle('menuopen'); };
-$('vbar').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.id !== 'vmenu') document.body.classList.remove('menuopen'); });
+$('vbar').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.id !== 'vmenu' && b.id !== 'vreset') document.body.classList.remove('menuopen'); });
 addEventListener('pointerdown', e => { if (!e.target.closest('#vbar')) document.body.classList.remove('menuopen'); });
 $('vcrop').innerHTML = IC.crop;
 $('vcrop').onclick = () => { if (!img) return; tabId = tabId === 'crop' ? null : 'crop'; if (tabId) rawPreview = false; builtTab = null; drawAll(); schedule(); };
