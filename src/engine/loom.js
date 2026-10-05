@@ -5,7 +5,7 @@
    Vite module; the graphics/control logic below is otherwise unchanged. */
 import { storeFile, listFiles, deleteFile, getFile } from '../storage/files';
 import { savePreset, listPresets, deletePreset, renamePreset } from '../storage/presets';
-import { saveToDevice, listDownloads, deleteDownload, redownload } from '../storage/downloads';
+import { saveToDevice, listDownloads, deleteDownload, redownload, deliver } from '../storage/downloads';
 
 export function initLoom() {
 const $ = id => document.getElementById(id);
@@ -1827,7 +1827,7 @@ async function finishRecording() {
   const type = (rec && rec.mimeType) || 'video/webm', ext = type.includes('mp4') ? 'mp4' : 'webm';
   const blob = new Blob(chunks, { type });
   if (!blob.size) { flash('Nothing was recorded'); return; }
-  try { await saveToDevice('loom.' + ext, blob, currentStyle()); refreshLibraryIfOpen(); }
+  try { afterSave(await saveToDevice('loom.' + ext, blob, currentStyle()), 'loom.' + ext, blob); refreshLibraryIfOpen(); }
   catch (err) { flash('Saving the recording failed'); }
 }
 
@@ -1880,7 +1880,7 @@ $('xgo').onclick = async () => {
     if (xs.fmt === 'png') {
       const c = document.createElement('canvas'); render(w, h, c); cache = null; layout();
       const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-      await saveToDevice(`loom-${w}x${h}.png`, blob, currentStyle());
+      afterSave(await saveToDevice(`loom-${w}x${h}.png`, blob, currentStyle()), `loom-${w}x${h}.png`, blob);
     } else {
       const text = vectorFile(xs.fmt, w, h);
       await saveToDevice(`loom-${w}x${h}.${xs.fmt}`, new Blob([text], { type: xs.fmt === 'svg' ? 'image/svg+xml' : 'application/pdf' }), currentStyle());
@@ -1891,6 +1891,15 @@ $('xgo').onclick = async () => {
   xs.busy = false; drawExport();
 };
 
+// When the phone refused the share sheet (it needs a fresh tap, and rendering can outlast the one that started
+// the export), offer a button: tapping it opens the sheet straight away with the finished file
+function afterSave(result, filename, blob) {
+  if (result === 'shared') flash('Saved');
+  if (result !== 'needs-tap') return;
+  const b = $('saveNow'); b.hidden = false;
+  b.textContent = blob.type.startsWith('video/') ? 'Save video to Photos' : 'Save to Photos';
+  b.onclick = async () => { b.hidden = true; const r = await deliver(filename, blob); if (r === 'shared') flash('Saved'); };
+}
 // Vector writers. Shapes are grouped by colour; density zones become clip regions.
 function adjHex(hex) { if (v.adjPattern) return hex; const c = hex2rgb(hex), O = new Uint8ClampedArray([c[0], c[1], c[2], 255]); adjustPass(O); return rgb2hex([O[0], O[1], O[2]]); }
 function vectorLayers(W, H) {
@@ -2085,7 +2094,7 @@ async function renderLibList() {
       box.append(galTile(media(box), d.filename, () => openGalView({
         media: media($('galMedia')), name: d.filename, meta: new Date(d.createdAt).toLocaleDateString() + ' · ' + formatBytes(d.size),
         onHold: d.style ? () => copyStyle(d.style, d.filename) : null,
-        actions: [['Download', GIC.download, () => redownload(d.id), true],
+        actions: [['Download', GIC.download, async () => { const r = await redownload(d.id); if (r) afterSave(r.result, r.filename, r.blob); }, true],
           ['Delete', GIC.trash, async () => { await deleteDownload(d.id); closeGalView(); renderLibList(); }]],
       }), () => copyStyle(d.style, d.filename)));
     });
