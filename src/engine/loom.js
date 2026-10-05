@@ -1769,6 +1769,11 @@ function paintVbar() {
   $('vplay').innerHTML = vid.paused ? PLAY : PAUSE; $('vplay').setAttribute('aria-label', vid.paused ? 'Play' : 'Pause');
   $('vrec').innerHTML = recording ? STOP : REC; $('vrec').classList.toggle('on', recording); $('vrec').setAttribute('aria-label', recording ? 'Stop' : 'Record');
 }
+// Every setting back to its default (the shared core of Reset and Clear)
+function resetSettings() {
+  Object.assign(v, D0); seed = 7; shapesPrimed = false; weavePrimed = false; ditherPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
+  Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null; resetPalMem();
+}
 let resetArm = 0, resetT = 0;
 const disarmReset = () => { resetArm = 0; clearTimeout(resetT); $('vreset').setAttribute('aria-label', 'Reset'); $('vreset').classList.remove('armed'); };
 $('vreset').onclick = () => {
@@ -1777,21 +1782,19 @@ $('vreset').onclick = () => {
     flash('Tap again to reset all settings'); clearTimeout(resetT); resetT = setTimeout(disarmReset, 3000); return;
   }
   disarmReset(); document.body.classList.remove('menuopen');
-  Object.assign(v, D0); seed = 7; shapesPrimed = false; weavePrimed = false; ditherPrimed = false; glyphModePrimed = false; martensPrimed = false; picking = false; primeMode();
-  Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null;
+  resetSettings();
   if (img) extractPalette();
-  resetPalMem();
   drawAll(); schedule(); flash('Settings reset');
 };
 $('vupload').onclick = () => $('file').click();
-// Clear: close the photo, video or canvas and go back to the start screen. Settings stay (they carry over to
-// whatever's opened next) and the photo stays in Recents, so nothing is lost
+// Clear: close the photo, video or canvas and go back to the start screen as a fresh start — every setting
+// back to default too (left-over Blur or Adjust made the next photo look wrong). The photo stays in Recents
 $('vclear').innerHTML = IC.clear;
 $('vclear').onclick = () => {
   if (recording) return;
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
-  img = null; imgId++; cache = null; currentFileId = null; canvasKey = ''; paletteAuto = true; resetPalMem(); tabId = null; builtTab = null; rawPreview = false; comparing = false; picking = false;
+  img = null; imgId++; cache = null; currentFileId = null; canvasKey = ''; resetSettings(); palette = []; paletteSrc = []; paletteAuto = true; tabId = null; builtTab = null; rawPreview = false; comparing = false; picking = false;
   clearTimeout(sessionT); try { localStorage.removeItem(SESSION_KEY); } catch {}
   document.body.classList.remove('menuopen', 'hideui');
   ['dock', 'vbar', 'topL'].forEach(id => $(id).classList.add('hidden'));
