@@ -1224,10 +1224,9 @@ const resetPalMem = () => { palGroup = palGroupOf(v.mode); palMem = {}; };
 let shapesPrimed = false, weavePrimed = false, ditherPrimed = false, glyphModePrimed = false, martensPrimed = false;
 // First-visit setup for a mode — run on picking it, and for the default mode at start and after a reset
 function primeMode() {
-  // Starting contrast/saturation for a pattern only apply if the photo hasn't been adjusted yet
-  const untouched = v.con === 1 && v.sat === 1;
-  if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; if (untouched) { v.sat = 1.1; v.con = 1.05; } if (img && paletteAuto) extractPalette(); }
-  if (v.mode === 'weave' && !weavePrimed) { weavePrimed = true; if (untouched) { v.con = 1.15; v.sat = 1.25; } }
+  if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; if (img && paletteAuto) extractPalette(); }
+  // Patterns never change the photo's Adjust settings (brightness, contrast, saturation) on their own
+  if (v.mode === 'weave' && !weavePrimed) weavePrimed = true;
   if (v.mode === 'glyph' && !glyphModePrimed) {
     glyphModePrimed = true;
     if (v.ssize === D0.ssize && v.halftone === D0.halftone && v.jitter === D0.jitter) { v.ssize = 0.55; v.halftone = 0.55; v.jitter = 0.45; }
