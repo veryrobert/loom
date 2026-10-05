@@ -31,7 +31,7 @@ const v = {
   gset: 'classic',
   // scale: one size for every pattern — Shapes cells, Glyph grid, Martens line spacing, Pixel stripes
   // (×0.7) and Dither mode dots (×0.2); density zones vary it across the image
-  mode: 'none', scale: 10, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'darkest', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
+  mode: 'none', scale: 10, ssize: 0.8, sbarw: 1, halftone: 0.35, sset: 'mixed', sby: 'tone', bandRows: 4, ground: 'auto', groundColor: '#F2EFE8', jitter: 0, zmode: 'off', zones: 4, zrange: 3, zorder: 'coarse', stone: 'full',
   mdir: 'h', mlevels: 4, msize: 1.8, mseg: 2, mstagger: 1, mthresh: 0.35, mfull: 0.85, mangle: 30,
   blstyle: 'blobs', blgrid: 'diag', blsize: 0.9, blneck: 0.6, bllinks: 0.65, blthresh: 0.4, blrand: 0.25, blcol: 'mono', blseed: 0,
   dfblend: 'shadow', dfbleed: 0.5, dfshadow: 0.6, dfspeck: 0.55, dfsize: 1, dfpal: true,
@@ -129,8 +129,7 @@ function dither(O, W, H, u, pal, o = { type: v.dither, levels: v.dlevels, size: 
   // its own colours kept as anchors and the extra levels blended evenly between neighbours
   let ramp = pal;
   if (usePal && Lv > pal.length && pal.length > 1) {
-    const EDGE_A = [0, 2, 0, 1], EDGE_B = [1, 3, 2, 3]; // a cell's top, bottom, left and right edges as corner pairs
-const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
     const P = pal.slice().sort((a, b) => lum(a) - lum(b)), segs = P.length - 1, extra = Lv - P.length;
     ramp = [P[0]];
     for (let s = 0; s < segs; s++) {
@@ -382,12 +381,20 @@ function glyphOps(shape, mx, my, d) {
 function shapeGeometry(W, H, u, S) {
   const shown = palette.length ? palette : ['#000000', '#ffffff'];
   const pal = (paletteSrc.length === palette.length && palette.length ? paletteSrc : shown).map(hex2rgb);
-  const EDGE_A = [0, 2, 0, 1], EDGE_B = [1, 3, 2, 3]; // a cell's top, bottom, left and right edges as corner pairs
-const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
   const cs = Math.max(2, v.scale * u), nx = Math.ceil(W / cs), ny = Math.ceil(H / cs);
   const custom = v.ground === 'custom', gc = hex2rgb(v.groundColor);
   let gi = v.ground === 'lightest' ? pal.length - 1 : v.ground === 'darkest' ? 0 : -1;
   if (custom) gi = nearestIdx(gc, pal);
+  // Auto: a mostly light image (median brightness over half) gets the lightest palette colour as its
+  // background, so its colourful parts become the shapes; a mostly dark one gets the darkest
+  if (v.ground === 'auto') {
+    const Ls = [], step = Math.max(4, Math.round(Math.min(W, H) / 120));
+    for (let y = 0; y < H; y += step) for (let x = 0; x < W; x += step) { const i = (y * W + x) * 4; Ls.push(lum([S[i], S[i + 1], S[i + 2]])); }
+    Ls.sort((a, b) => a - b);
+    const byL = pal.map((c, j) => j).sort((a, b) => lum(pal[a]) - lum(pal[b]));
+    gi = (Ls[Ls.length >> 1] || 0) > 128 ? byL[byL.length - 1] : byL[0];
+  }
   const Lg = gi >= 0 ? lum(pal[gi]) : 0;
   const r = mulberry(seed * 13 + 1), shift = Math.floor(r() * 6);
   const set = v.sset === 'mixed' ? SHAPE_ORDER : v.sset === 'glyph' ? (v.mode === 'glyph' && GLYPH_SETS[v.gset]) || GLYPH_SET : [v.sset];
@@ -1342,7 +1349,7 @@ function randomShapes() {
   v.halftone = +(Math.random() * 0.8).toFixed(2);
   v.sby = Math.random() < 0.5 ? 'tone' : 'rows';
   v.bandRows = 2 + Math.floor(Math.random() * 8);
-  v.ground = pick(['darkest', 'darkest', 'lightest']);
+  v.ground = pick(['auto', 'auto', 'darkest', 'lightest']);
   v.stone = pick(['full', 'full', 'duo', 'mono']);
   v.jitter = +(Math.random() < 0.4 ? 0 : Math.random() * 0.8).toFixed(2);
   seed = Math.floor(Math.random() * 1e6);
@@ -1361,7 +1368,7 @@ const COLOUR_WEAVE = [
 const COLOUR_SHAPES = [
     C_('cmode', 'Colour from', IC.palette, [['image', 'Image'], ['palette', 'Image palette']]),
     C_('stone', 'Scheme', IC.tone, [['full', 'Full'], ['duo', 'Duotone'], ['mono', 'Mono']]),
-    C_('ground', 'Background', IC.ground, [['darkest', 'Darkest'], ['lightest', 'Lightest'], ['custom', 'Custom'], ['image', 'Image']]),
+    C_('ground', 'Background', IC.ground, [['auto', 'Auto'], ['darkest', 'Darkest'], ['lightest', 'Lightest'], ['custom', 'Custom'], ['image', 'Image']]),
     when({ t: 'k', key: 'groundColor', label: 'Background colour', icon: IC.fill, onSet: () => { v.ground = 'custom'; } }, () => v.ground !== 'image'),
     ...COLOUR_COMMON];
 const COLOUR_GLYPH = COLOUR_COMMON;
