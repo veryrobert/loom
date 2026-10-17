@@ -3,6 +3,8 @@
 Turns a photo or video into a flat graphic pattern — weave stripes or halftone
 shapes, built from the image's own colours — entirely in the browser.
 
+![loom](docs/screenshot.png)
+
 ## Stack
 
 - **Vite + TypeScript** for the build. No UI framework: the control surface is
