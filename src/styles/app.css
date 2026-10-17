@@ -132,7 +132,10 @@ body.exporting .dock, body.exporting .topL{visibility:hidden}
   .slot,.scrub{width:min(640px, calc(100vw - 150px))}
   /* choice pills get the full width beside the menus, so most rows fit without scrolling */
   .slot-ctl > .chips{width:min(1100px, calc(100vw - 160px)); left:50%; right:auto; transform:translateX(-50%)}
-  .dock > .slot,.dock > .title{margin-left:124px}
+  /* Controls sit centred under the artwork, a little clear of the bottom edge, at the same type size as the other apps */
+  .dock{padding-bottom:16px}
+  .title{font-size:13px}
+  .chip{font-size:13px; height:30px; padding:0 11px; border-radius:15px}
   /* Hover labels for icon-only buttons */
   .tab,.item,.vbar > button{position:relative}
   .tab::after,.item::after{content:attr(data-label); left:calc(100% + 12px); top:50%; transform:translateY(-50%)}
