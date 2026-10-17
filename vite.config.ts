@@ -3,14 +3,14 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
-export default defineConfig(({ command }) => ({
+export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, './src') },
   },
-  // GitHub Pages serves the site from /loom/; the dev server stays at /
-  base: command === 'build' ? '/loom/' : '/',
+  // Served from the root of loom.robertfarrelly.com
+  base: '/',
   build: {
     target: 'es2020',
   },
-}))
+})
