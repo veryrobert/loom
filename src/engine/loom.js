@@ -1654,7 +1654,7 @@ function flashAction(t, label, fn) {
 // ---------- image in ----------
 // ---------- session: phones unload background pages, so the open photo (its stored copy) and every setting
 // are saved as you work and when you switch away, and reopened exactly on return ----------
-let currentFileId = null, sessionT = 0;
+let currentFileId = null, sessionT = 0, loadSeq = 0;
 const SESSION_KEY = 'loom.session';
 // Every setting, the seed and the palette: what a session saves and what Undo puts back
 const lookState = () => JSON.parse(JSON.stringify({ v, seed, palette, paletteSrc, paletteAuto, palMem,
@@ -1699,8 +1699,8 @@ function loadFile(f, opts) {
   if (!f.type.startsWith('image/')) return;
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
-  const im = new Image();
-  im.onload = () => { const first = !img, wasCanvas = isCanvas(); img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length || wasCanvas) { extractPalette(); if (wasCanvas) resetPalMem(); } if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); saveSessionSoon(); };
+  const im = new Image(), seq = ++loadSeq;
+  im.onload = () => { if (seq !== loadSeq) return; const first = !img, wasCanvas = isCanvas(); img = im; imgId++; v.panX = v.panY = 0; v.zoom = 1; if (paletteAuto || !palette.length || wasCanvas) { extractPalette(); if (wasCanvas) resetPalMem(); } if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); drawAll(); schedule(); showUI(); saveSessionSoon(); };
   im.onerror = () => { hideLoading(); flash("Couldn't open that image"); };
   showLoading();
   im.src = URL.createObjectURL(f);
@@ -1800,8 +1800,9 @@ function loadVideo(f, opts) {
   // iPhone Safari decodes video more reliably when the element is in the page
   el.style.cssText = 'position:fixed; left:0; top:0; width:2px; height:2px; opacity:0; pointer-events:none';
   document.body.appendChild(el);
-  let started = false;
+  let started = false; const seq = ++loadSeq;
   const ready = () => {
+    if (seq !== loadSeq) { el.remove(); return; }
     if (started || !el.videoWidth || el.readyState < 2) return;
     const first = !img, wasCanvas = isCanvas(); started = true; vid = el; img = el; imgId++; v.panX = v.panY = 0; v.zoom = 1;
     if (paletteAuto || !palette.length || wasCanvas) { extractPalette(); if (wasCanvas) resetPalMem(); } if (palGroup !== 'colour') palMem.colour = 'extract'; if (first) showRaw(); else cache = null; if (opts.restore) restoreState(opts.restore); hideLoading(); revealEditor(); $('dock').classList.remove('hidden'); $('vbar').classList.remove('hidden'); ['vplay', 'vrec'].forEach(id => $(id).hidden = false);
@@ -1856,6 +1857,8 @@ $('vclear').innerHTML = IC.clear;
 $('vclear').onclick = () => clearAll();
 function clearAll() {
   if (recording) return;
+  // Close anything open over the artwork, and orphan a photo still loading so it can't reopen the editor
+  closeExport(); closeLibrary(); hideCallout(); loadSeq++;
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
   img = null; imgId++; cache = null; currentFileId = null; canvasKey = ''; resetSettings(); palette = []; paletteSrc = []; paletteAuto = true; tabId = null; builtTab = null; rawPreview = false; comparing = false; picking = false;
