@@ -241,3 +241,4 @@ body.booting .empty > *{opacity:0; animation:none}
 @media (prefers-reduced-motion: reduce){ .weave path{animation:none; stroke-dashoffset:0} }
 
 .item.btn-hidden{display:none}
+.toast-action{pointer-events:auto; margin-left:12px; font-weight:500; text-decoration:underline; text-underline-offset:3px}

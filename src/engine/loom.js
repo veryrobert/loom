@@ -1643,18 +1643,27 @@ const showUI = () => { document.body.classList.remove('hideui'); clearTimeout(id
 ['pointerdown', 'pointermove', 'keydown', 'wheel'].forEach(ev => addEventListener(ev, e => { if (ev === 'pointermove' && e.pointerType === 'touch') return; showUI(); }, { passive: true }));
 const toast = t => { $('toast').textContent = t; $('toast').hidden = !t; };
 let flashT; const flash = t => { toast(t); clearTimeout(flashT); flashT = setTimeout(() => { if (!picking) toast(''); }, 1200); };
+// A toast with one action (Undo), kept up long enough to reach it
+function flashAction(t, label, fn) {
+  const el = $('toast'), b = document.createElement('button');
+  b.className = 'toast-action'; b.textContent = label; b.onclick = () => { clearTimeout(flashT); toast(''); fn(); };
+  el.textContent = t; el.append(b); el.hidden = false;
+  clearTimeout(flashT); flashT = setTimeout(() => { if (!picking) toast(''); }, 5000);
+}
 
 // ---------- image in ----------
 // ---------- session: phones unload background pages, so the open photo (its stored copy) and every setting
 // are saved as you work and when you switch away, and reopened exactly on return ----------
 let currentFileId = null, sessionT = 0;
 const SESSION_KEY = 'loom.session';
+// Every setting, the seed and the palette: what a session saves and what Undo puts back
+const lookState = () => JSON.parse(JSON.stringify({ v, seed, palette, paletteSrc, paletteAuto, palMem,
+  primed: { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } }));
 function saveSession() {
   clearTimeout(sessionT);
   if (!img || (currentFileId == null && !isCanvas())) return;
   try {
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ fileId: isCanvas() ? null : currentFileId, canvas: isCanvas(), v, seed, palette, paletteSrc, paletteAuto,
-      palMem, primed: { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } }));
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ fileId: isCanvas() ? null : currentFileId, canvas: isCanvas(), at: Date.now(), ...lookState() }));
   } catch { /* storage full or blocked: nothing to restore later, which is fine */ }
 }
 const saveSessionSoon = () => { clearTimeout(sessionT); sessionT = setTimeout(saveSession, 400); };
@@ -1830,15 +1839,22 @@ function resetSettings() {
   Object.keys(selIdx).forEach(k => selIdx[k] = 0); builtTab = null; cache = null; resetPalMem();
 }
 $('vreset').onclick = () => {
-  resetSettings();
-  if (img) extractPalette();
-  drawAll(); schedule(); flash('Settings reset');
+  if (!img || recording) return;
+  const before = lookState();
+  resetSettings(); comparing = false; rawPreview = false; toast('');
+  // A blank canvas is drawn from its palette, seed and base: keep them. Re-extracting the palette from
+  // the canvas itself muddied the colours a little more on every reset
+  if (isCanvas()) { seed = before.seed; palette = before.palette; paletteSrc = palette.slice(); paletteAuto = before.paletteAuto; v.cbase = before.v.cbase; }
+  else extractPalette();
+  drawAll(); schedule();
+  flashAction('Settings reset', 'Undo', () => { restoreState(before); drawAll(); schedule(); flash('Restored'); });
 };
 $('vupload').onclick = () => $('file').click();
 // Clear: close the photo, video or canvas and go back to the start screen as a fresh start — every setting
 // back to default too (left-over Blur or Adjust made the next photo look wrong). The photo stays in Recents
 $('vclear').innerHTML = IC.clear;
-$('vclear').onclick = () => {
+$('vclear').onclick = () => clearAll();
+function clearAll() {
   if (recording) return;
   if (vid) { vid.pause(); vid.remove(); vid = null; }
   ['vplay', 'vrec'].forEach(id => $(id).hidden = true);
@@ -1848,7 +1864,17 @@ $('vclear').onclick = () => {
   ['dock', 'vbar', 'topL'].forEach(id => $(id).classList.add('hidden'));
   out.width = out.width; toast('');
   $('empty').hidden = false; drawRecent(); drawAll();
-};
+}
+
+// ---------- session timeout: work left alone for a long while is cleared, so an old photo and its
+// settings don't greet you the next day. Same as Clear: the photo itself stays in Recents ----------
+const SESSION_TTL = 6 * 60 * 60 * 1000;
+let lastActive = Date.now();
+const expired = at => !at || Date.now() - at > SESSION_TTL;
+const checkIdle = () => { if (img && !recording && expired(lastActive)) clearAll(); };
+['pointerdown', 'keydown', 'wheel'].forEach(ev => addEventListener(ev, () => { checkIdle(); lastActive = Date.now(); }, { capture: true, passive: true }));
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkIdle(); });
+setInterval(checkIdle, 60 * 1000);
 $('vdown').onclick = openExport;
 $('vplay').onclick = () => { if (!vid || recording) return; vid.paused ? vid.play() : vid.pause(); };
 let rec = null, chunks = [];
@@ -2291,7 +2317,8 @@ $('vsave').onclick = async () => {
 layout();
 // Reopen the last session (photo + settings) if there is one
 try {
-  const st = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+  let st = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+  if (st && expired(st.at)) { localStorage.removeItem(SESSION_KEY); st = null; }
   if (st && st.canvas) newCanvas({ restore: st });
   else if (st && st.fileId != null) getFile(st.fileId).then(rec => { if (rec && !img) loadFile(new File([rec.blob], rec.name, { type: rec.type }), { skipStore: true, fileId: rec.id, restore: st }); }).catch(() => {});
 } catch { /* unreadable session: start fresh */ }
