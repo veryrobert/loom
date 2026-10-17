@@ -1135,8 +1135,8 @@ addEventListener('resize', schedule);
 
 // ---------- icons ----------
 // Icons: Lucide (lucide.dev), ISC licence
-const P = 'fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"';
-const I = d => `<svg width="22" height="22" viewBox="0 0 24 24" ${P}>${d}</svg>`;
+const P = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
+const I = d => `<svg width="20" height="20" viewBox="0 0 24 24" ${P}>${d}</svg>`;
 const IC = {
   adjust: I("<path d=\"m12 14 4-4\" />  <path d=\"M3.34 19a10 10 0 1 1 17.32 0\" />"),
   colour: I("<path d=\"M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z\" />  <circle cx=\"13.5\" cy=\"6.5\" r=\".5\" fill=\"currentColor\" />  <circle cx=\"17.5\" cy=\"10.5\" r=\".5\" fill=\"currentColor\" />  <circle cx=\"6.5\" cy=\"12.5\" r=\".5\" fill=\"currentColor\" />  <circle cx=\"8.5\" cy=\"7.5\" r=\".5\" fill=\"currentColor\" />"),
@@ -1828,7 +1828,7 @@ function frameLoop() {
   const next = () => { if (vid !== el) return; if (!el.paused) { imgId++; schedule(); } el.requestVideoFrameCallback ? el.requestVideoFrameCallback(next) : requestAnimationFrame(next); };
   next();
 }
-const PLAY = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></svg>', PAUSE = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="3" width="5" height="18" rx="1" />  <rect x="5" y="3" width="5" height="18" rx="1" /></svg>', REC = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1" />  <circle cx="12" cy="12" r="10" /></svg>', STOP = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /></svg>';
+const PLAY = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></svg>', PAUSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="3" width="5" height="18" rx="1" />  <rect x="5" y="3" width="5" height="18" rx="1" /></svg>', REC = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1" />  <circle cx="12" cy="12" r="10" /></svg>', STOP = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /></svg>';
 function paintVbar() {
   if (!vid) return;
   $('vplay').innerHTML = vid.paused ? PLAY : PAUSE; $('vplay').setAttribute('aria-label', vid.paused ? 'Play' : 'Pause');
