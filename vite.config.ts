@@ -1,9 +1,9 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig(({ command }) => ({
-  // GitHub Pages serves the site from /loom/; the dev server stays at /
-  base: command === 'build' ? '/loom/' : '/',
+export default defineConfig({
+  // Served from the root of loom.robertfarrelly.com
+  base: '/',
   build: {
     target: 'es2020',
   },
-}));
+});
