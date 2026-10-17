@@ -1104,7 +1104,7 @@ function extractPalette() {
 
 // ---------- layout ----------
 // Desktop chrome footprint: the stacked tab + setting columns on the left, title/slider/swatches at the bottom
-const DESK_LEFT = 124, DESK_BOTTOM = 150;
+const DESK_LEFT = 124, DESK_BOTTOM = 166;
 function layout() {
   // Fit the artboard between the top bar and the tab bar (tab controls may still float over it)
   // Keep the artboard clear of the chrome. The top bar's row is fixed height (on phones its burger menu
@@ -1113,7 +1113,8 @@ function layout() {
   const desk = matchMedia('(min-width: 900px)').matches && tabs.height;
   const top = bar.height ? bar.top + 44 + gap : gap;
   const bottom = desk ? innerHeight - DESK_BOTTOM : tabs.height ? tabs.top - gap : innerHeight - gap;
-  const x0 = desk ? DESK_LEFT : gap, aw = innerWidth - x0 - gap, ah = Math.max(80, bottom - top);
+  // Desktop keeps the same margin on both sides, so the artwork sits in the middle of the window
+  const x0 = desk ? DESK_LEFT : gap, aw = innerWidth - x0 - (desk ? DESK_LEFT : gap), ah = Math.max(80, bottom - top);
   const r = ratio(); let w = aw, h = w / r; if (h > ah) { h = ah; w = h * r; }
   out.style.width = w + 'px'; out.style.height = h + 'px'; out.style.left = x0 + (aw - w) / 2 + 'px'; out.style.top = top + (ah - h) / 2 + 'px';
   // Full screen sharpness (3× on iPhones) when still, capped at ~3.5M pixels; half that while dragging or pinching
