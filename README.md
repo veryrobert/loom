@@ -1,4 +1,4 @@
-# Loom
+# loom
 
 Turns a photo or video into a flat graphic pattern — weave stripes or halftone
 shapes, built from the image's own colours — entirely in the browser.
