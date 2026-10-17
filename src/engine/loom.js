@@ -18,6 +18,9 @@ let img = null, imgId = 0, cache = null, interactive = false, seed = 7, picking 
 // any hand-made or mode-set palette clears it so loading another image keeps the user's colours
 let paletteAuto = true;
 const v = {
+  // Colour: one setting for every pattern. photo = the image's own colours; palette = snapped to the
+  // swatches; duo = two inks on a ground from the palette; mono = one ink on a ground
+  colour: 'photo',
   zoom: 1, panX: 0, panY: 0, format: 'image', split: 1, side: 'left', pcover: 0.5, psize: 4, pdepth: 2, mscale: 1, mx: 0, my: 0, maskMove: false, photoColour: true, exportLong: 'native',
   detail: 0, perstripe: true, cmode: 'palette', kcount: 7,
   bri: 1, con: 1, sat: 1, hue: 0, glow: 0, gsize: 10, blend: 'none', mix: 0.25,
@@ -934,7 +937,7 @@ function zoneRects(W, H) {
   }
   return { rects: out, L };
 }
-function renderZones(W, H, target) {
+function renderZones(W, H, target) { // called inside withColour; renders each layer with renderPattern
   const { rects, L } = zoneRects(W, H);
   const keep = { scale: v.scale, dsize: v.dsize, zmode: v.zmode };
   const used = [...new Set(rects.map(z => z[4]))];
@@ -944,15 +947,43 @@ function renderZones(W, H, target) {
     for (const l of used) {
       const f = L > 1 ? 1 + (v.zrange - 1) * l / (L - 1) : 1;
       v.scale = keep.scale * f; v.dsize = Math.max(1, Math.round(keep.dsize * f));
-      const c = document.createElement('canvas'); render(W, H, c); layers[l] = c;
+      const c = document.createElement('canvas'); renderPattern(W, H, c); layers[l] = c;
     }
   } finally { Object.assign(v, keep); }
   target.width = W; target.height = H; const g = target.getContext('2d');
   for (const [x, y, w, h, l] of rects) if (w > 0 && h > 0) g.drawImage(layers[l], x, y, w, h, x, y, w, h);
 }
 
+// The older per-pattern keys, derived from Colour so the renderers don't change
+function applyColour() {
+  const c = v.colour, usePal = c !== 'photo';
+  v.cmode = usePal ? 'palette' : 'image';
+  v.stone = 'full';
+  v.dpal = v.ddpal = v.dfpal = usePal;
+  v.blcol = c === 'palette' || c === 'duo' ? 'palette' : 'mono';
+}
+// Duo and Mono draw from a reduced palette: the darkest and lightest swatches, plus (for Duo) the most
+// colourful of the rest. The swatches themselves are left alone
+function colourPalette() {
+  if (palette.length < 3 || (v.colour !== 'duo' && v.colour !== 'mono')) return palette;
+  const byL = palette.slice().sort((a, b) => lum(hex2rgb(a)) - lum(hex2rgb(b)));
+  const dark = byL[0], light = byL[byL.length - 1];
+  if (v.colour === 'mono') return [dark, light];
+  const chroma = h => { const [r, g, b] = hex2rgb(h); return Math.max(r, g, b) - Math.min(r, g, b); };
+  const mid = byL.slice(1, -1).sort((a, b) => chroma(b) - chroma(a))[0];
+  return [dark, mid, light];
+}
+function withColour(fn) {
+  applyColour();
+  const full = palette;
+  palette = colourPalette();
+  try { return fn(); } finally { palette = full; }
+}
 function render(W, H, target) {
-  syncCanvas();
+  syncCanvas(); // before the palette is narrowed: a blank canvas is drawn from all its colours
+  return withColour(() => renderPattern(W, H, target));
+}
+function renderPattern(W, H, target) {
   if (v.zmode !== 'off' && img) return renderZones(W, H, target);
   const g = target.getContext('2d');
   target.width = W; target.height = H;
@@ -1242,6 +1273,7 @@ const MODE_ITEM = Object.assign(C_('mode', 'Pattern', IC.layout, [['none', 'None
 const palGroupOf = m => m === 'glyph' || m === 'martens' || m === 'dither' ? m : 'colour';
 let palGroup = palGroupOf(v.mode), palMem = {};
 function swapPalette() {
+  return; // patterns share one palette now; kept so old call sites stay valid
   const to = palGroupOf(v.mode); if (to === palGroup) return;
   palMem[palGroup] = { palette: palette.slice(), paletteSrc: paletteSrc.slice(), paletteAuto };
   const m = palMem[to]; palGroup = to;
@@ -1253,16 +1285,16 @@ const resetPalMem = () => { palGroup = palGroupOf(v.mode); palMem = {}; };
 let shapesPrimed = false, weavePrimed = false, ditherPrimed = false, glyphModePrimed = false, martensPrimed = false;
 // First-visit setup for a mode — run on picking it, and for the default mode at start and after a reset
 function primeMode() {
-  if (v.mode === 'shapes' && !shapesPrimed) { shapesPrimed = true; v.cmode = 'image'; if (v.kcount < 8) v.kcount = 8; if (img && paletteAuto) extractPalette(); }
+  if (v.mode === 'shapes' && !shapesPrimed) shapesPrimed = true; // no longer changes colour settings
   // Patterns never change the photo's Adjust settings (brightness, contrast, saturation) on their own
   if (v.mode === 'weave' && !weavePrimed) weavePrimed = true;
   if (v.mode === 'glyph' && !glyphModePrimed) {
     glyphModePrimed = true;
     if (v.ssize === D0.ssize && v.halftone === D0.halftone && v.jitter === D0.jitter) { v.ssize = 0.55; v.halftone = 0.55; v.jitter = 0.45; }
-    if (paletteAuto) { palette = ['#ffffff', '#111111']; paletteSrc = palette.slice(); paletteAuto = false; }
+    v.colour = 'mono';
   }
-  if (v.mode === 'martens' && !martensPrimed) { martensPrimed = true; if (paletteAuto) { palette = ['#111111', '#f2f2f2']; paletteSrc = palette.slice(); paletteAuto = false; } }
-  if (v.mode === 'dither' && !ditherPrimed) { ditherPrimed = true; if (paletteAuto) { palette = ['#000000', '#ffffff']; paletteSrc = palette.slice(); paletteAuto = false; } }
+  if (v.mode === 'martens' && !martensPrimed) { martensPrimed = true; v.colour = 'mono'; }
+  if (v.mode === 'dither' && !ditherPrimed) { ditherPrimed = true; v.colour = 'mono'; }
 }
 primeMode();
 // Controls can declare when they apply; hidden ones keep their values
@@ -1292,7 +1324,7 @@ const GLYPH_ITEMS = [MODE_ITEM,
     C_('gset', 'Glyphs', IC.shapes, [['classic', 'Classic'], ['geometric', 'Geometric'], ['stars', 'Stars'], ['arrows', 'Arrows'], ['curves', 'Curves'], ['money', 'Money'], ['everything', 'Everything']])];
 const DITHER_ITEMS = [MODE_ITEM,
     Object.assign(C_('ddither', 'Dither type', IC.grid, [['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), { noTitle: true }),
-    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('ddpal', 'Use palette', IC.palette)];
+    S_('ddlevels', 'Levels', IC.levels, 2, 16, 1), S_('ddvary', 'Random sizes', IC.dice, 0, 1, 0.01)];
 const GLASS_ITEMS = [MODE_ITEM,
     C_('gltype', 'Glass', IC.ribs, [['reeded', 'Reeded'], ['fluted', 'Fluted'], ['frosted', 'Frosted']]),
     C_('gldir', 'Direction', IC.offset, [['v', 'Vertical'], ['h', 'Horizontal']]),
@@ -1313,9 +1345,8 @@ const BLOBS_ITEMS = [MODE_ITEM,
 const DIFFUSE_ITEMS = [MODE_ITEM,
     C_('dfblend', 'Blend', IC.blend, [['shadow', 'Shadow'], ['soft', 'Soft'], ['glow', 'Glow'], ['difference', 'Difference']]),
     S_('dfbleed', 'Bleed', IC.bleed, 0, 1, 0.01),
-    when(S_('dfshadow', 'Strength', IC.contrast, 0, 1, 0.01), () => v.dfblend !== 'soft' && v.dfpal),
-    S_('dfspeck', 'Speckle', IC.noise, 0, 1, 0.01), S_('dfsize', 'Speckle size', IC.size, 1, 6, 1),
-    T_('dfpal', 'Use palette', IC.palette)];
+    when(S_('dfshadow', 'Strength', IC.contrast, 0, 1, 0.01), () => v.dfblend !== 'soft' && v.colour !== 'photo'),
+    S_('dfspeck', 'Speckle', IC.noise, 0, 1, 0.01), S_('dfsize', 'Speckle size', IC.size, 1, 6, 1)];
 const MARTENS_ITEMS = [MODE_ITEM,
     C_('mdir', 'Direction', IC.offset, [['h', 'Horizontal'], ['v', 'Vertical'], ['d', 'Diagonal']]),
     when(S_('mangle', 'Angle', IC.ruler, 5, 85, 1), () => v.mdir === 'd'),
@@ -1340,7 +1371,7 @@ function randomPalette() {
   const order = palette.map((h, i) => i).sort((a, b) => L(paletteSrc[a] || palette[a]) - L(paletteSrc[b] || palette[b]));
   const n = order.length, m = P.length;
   order.forEach((idx, rank) => { palette[idx] = P[n > 1 ? Math.round(rank * (m - 1) / (n - 1)) : 0]; }); paletteAuto = false;
-  if (v.mode === 'weave') v.cmode = 'palette';
+  if (v.colour === 'photo') v.colour = 'palette'; // a random palette only shows on the palette
 }
 function randomShapes() {
   const pick = a => a[Math.floor(Math.random() * a.length)];
@@ -1356,26 +1387,24 @@ function randomShapes() {
   seed = Math.floor(Math.random() * 1e6);
   flash('Random settings');
 }
-const COLOUR_COMMON = [
+// Colour comes first in the tab, for every pattern
+const COLOUR_ITEM = C_('colour', 'Colour', IC.palette, [['photo', 'Photo'], ['palette', 'Palette'], ['duo', 'Duo'], ['mono', 'Mono']]);
+// Palette edits can shift the photo's own colours, which only matters where the photo shows
+const photoShows = () => v.mode === 'none' || v.mode === 'glass' || v.mode === 'diffuse' || v.split !== 1;
+const COLOUR_TOOLS = [
     T_('invert', 'Invert', IC.contrast),
-    T_('photoColour', 'Colour the photo', IC.roller),
+    when(T_('photoColour', 'Apply to photo', IC.roller), photoShows),
     S_('kcount', 'Palette colours', IC.swatch, 2, 12, 1, () => { if (img) { extractPalette(); drawSwatches(); } }),
-    A_('Extract palette', IC.wand, () => { extractPalette(); if (v.mode === 'weave') v.cmode = 'palette'; drawSwatches(); }),
+    A_('Extract palette', IC.wand, () => { extractPalette(); drawSwatches(); }),
     Object.assign(A_('Random palette', IC.dice, () => { randomPalette(); flash('Random palette'); }), { flash: false }),
     Object.assign(A_('Pick from image', IC.picker, () => { picking = true; toast('Tap the image to pick a colour'); }), { flash: false })];
-const COLOUR_WEAVE = [
-    C_('cmode', 'Colour from', IC.palette, [['image', 'Image'], ['palette', 'Image palette']]),
-    S_('detail', 'Image through', IC.eye, 0, 1, 0.01), when(T_('perstripe', 'Sample per stripe', IC.bars), () => v.detail > 0), ...COLOUR_COMMON];
-const COLOUR_SHAPES = [
-    C_('cmode', 'Colour from', IC.palette, [['image', 'Image'], ['palette', 'Image palette']]),
-    C_('stone', 'Scheme', IC.tone, [['full', 'Full'], ['duo', 'Duotone'], ['mono', 'Mono']]),
+const COLOUR_COMMON = [COLOUR_ITEM, ...COLOUR_TOOLS];
+const COLOUR_WEAVE = [COLOUR_ITEM,
+    S_('detail', 'Image through', IC.eye, 0, 1, 0.01), when(T_('perstripe', 'Sample per stripe', IC.bars), () => v.detail > 0), ...COLOUR_TOOLS];
+const COLOUR_SHAPES = [COLOUR_ITEM,
     C_('ground', 'Background', IC.ground, [['auto', 'Auto'], ['darkest', 'Darkest'], ['lightest', 'Lightest'], ['custom', 'Custom'], ['image', 'Image']]),
     when({ t: 'k', key: 'groundColor', label: 'Background colour', icon: IC.fill, onSet: () => { v.ground = 'custom'; } }, () => v.ground !== 'image'),
-    ...COLOUR_COMMON];
-const COLOUR_GLYPH = COLOUR_COMMON;
-const COLOUR_BLOBS = [C_('blcol', 'Ink', IC.tone, [['mono', 'Mono'], ['palette', 'Palette']]), ...COLOUR_COMMON];
-const COLOUR_MARTENS = COLOUR_COMMON;
-const COLOUR_DITHER = COLOUR_COMMON;
+    ...COLOUR_TOOLS];
 const SPLIT_CHOICE = Object.assign(C_('split', 'Treated area', IC.split, [[1, 'Full', IC.full], [2 / 3, '⅔'], [0.5, '½'], [1 / 3, '⅓'], [0.25, '¼'], ['patch', 'Patches', IC.patch]]), { onPick: () => { builtTab = null; } });
 const SIDE_ITEM = C_('side', 'Treat from', IC.side, [['left', 'Left', IC.aleft], ['right', 'Right', IC.aright], ['top', 'Top', IC.aup], ['bottom', 'Bottom', IC.adown]]);
 const PATCH_ITEMS = [S_('pcover', 'Coverage', IC.cover, 0.05, 0.95, 0.01), S_('psize', 'Patch size', IC.patch, 1, 10, 1), S_('pdepth', 'Mix of sizes', IC.zones, 0, 4, 1),
@@ -1406,13 +1435,13 @@ const TABS = [
     C_('blend', 'Blend', IC.blend, [['none', 'Off'], ['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'], ['soft-light', 'Soft light'], ['hard-light', 'Hard light'], ['difference', 'Difference'], ['exclusion', 'Exclusion'], ['color', 'Colour'], ['luminosity', 'Luminosity']]),
     when(S_('mix', 'Blend amount', IC.mix, 0, 1, 0.01), () => v.blend !== 'none'),
     T_('adjPattern', 'Adjust pattern only', IC.shapes)] },
-  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'none' ? COLOUR_COMMON : v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'glyph' ? COLOUR_GLYPH : v.mode === 'dither' ? COLOUR_DITHER : v.mode === 'glass' || v.mode === 'diffuse' ? COLOUR_COMMON : v.mode === 'blobs' ? COLOUR_BLOBS : v.mode === 'martens' ? COLOUR_MARTENS : COLOUR_WEAVE; } },
+  { id: 'colour', label: 'Colour', icon: IC.colour, get items() { return v.mode === 'shapes' ? COLOUR_SHAPES : v.mode === 'weave' ? COLOUR_WEAVE : COLOUR_COMMON; } },
   { id: 'texture', label: 'Texture', icon: IC.texture, items: [
     S_('grain', 'Grain', IC.noise, 0, 80, 1),
     S_('glow', 'Glow', IC.glow, 0, 2, 0.01), when(S_('gsize', 'Glow size', IC.radius, 2, 60, 1), () => v.glow > 0),
     // Dither finish — hidden in Dither mode, which has its own; its settings show once a type is picked
     when(C_('dither', 'Dither', IC.dither, [['off', 'Off'], ['ordered', 'Ordered'], ['diffuse', 'Diffusion']]), () => v.mode !== 'dither'),
-    ...[S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), S_('dvary', 'Random sizes', IC.dice, 0, 1, 0.01), T_('dpal', 'Use palette', IC.palette)]
+    ...[S_('dlevels', 'Levels', IC.levels, 2, 16, 1), S_('dsize', 'Dot size', IC.size, 1, 12, 1), S_('dvary', 'Random sizes', IC.dice, 0, 1, 0.01)]
       .map(it => when(it, () => v.mode !== 'dither' && v.dither !== 'off'))] },
   // Scale: one size for every pattern, plus Density zones that vary it across the image (hidden for None)
   { id: 'scale', label: 'Scale', icon: IC.cell, items: [SCALE_ITEM, ...DENSITY_ITEMS] },
@@ -1546,9 +1575,12 @@ function centerChips(box, fromLeft) {
   if (on) box.scrollTo({ left: on.offsetLeft + on.offsetWidth / 2 - half, behavior: fromLeft != null && !calm() ? 'smooth' : 'auto' });
 }
 let removing = false;
+const LOCK_SHUT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+const LOCK_OPEN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>';
 function drawSwatches() {
   const box = $('swatches'); box.classList.toggle('hidden', tabId !== 'colour' || !palette.length); box.innerHTML = '';
-  const usePalette = () => { if (v.cmode !== 'palette') { v.cmode = 'palette'; paintItems(); drawControl(); } };
+  // Editing a swatch only shows if the pattern uses the palette, so switch to it, and say so
+  const usePalette = () => { if (v.colour === 'photo') { v.colour = 'palette'; flash('Colour: Palette'); paintItems(); drawControl(); } };
   palette.forEach((h, i) => {
     const w = document.createElement('label'); w.className = 'sw'; w.style.background = h;
     if (removing) {
@@ -1571,6 +1603,18 @@ function drawSwatches() {
   const rm = document.createElement('button'); rm.className = 'sw tool' + (removing ? ' active' : ''); rm.setAttribute('aria-label', removing ? 'Done removing' : 'Remove colours'); rm.innerHTML = '<span>' + (removing ? '✓' : '−') + '</span>';
   rm.onclick = () => { removing = !removing; drawSwatches(); };
   box.append(rm);
+  // Locked: these colours stay for the next photo. Unlocked: each photo brings its own (re-extracted now)
+  const lk = document.createElement('button'); lk.className = 'sw tool' + (paletteAuto ? '' : ' active');
+  lk.setAttribute('aria-label', paletteAuto ? 'Keep these colours for the next photo' : 'Colours kept. Let each photo bring its own');
+  lk.title = lk.getAttribute('aria-label');
+  lk.innerHTML = paletteAuto ? LOCK_OPEN : LOCK_SHUT;
+  lk.onclick = () => {
+    paletteAuto = !paletteAuto;
+    if (paletteAuto && img && !isCanvas()) extractPalette();
+    flash(paletteAuto ? 'Colours follow the photo' : 'Colours kept for the next photo');
+    drawSwatches(); schedule();
+  };
+  box.append(lk);
 }
 
 function drawCorners() {
@@ -1668,8 +1712,20 @@ function saveSession() {
   } catch { /* storage full or blocked: nothing to restore later, which is fine */ }
 }
 const saveSessionSoon = () => { clearTimeout(sessionT); sessionT = setTimeout(saveSession, 400); };
+// Looks saved before Colour existed: work it out from the keys each pattern used
+function migrateColour(o) {
+  if (o.colour) return o.colour;
+  const m = o.mode;
+  if (m === 'shapes') return o.stone === 'mono' ? 'mono' : o.stone === 'duo' ? 'duo' : o.cmode === 'image' ? 'photo' : 'palette';
+  if (m === 'weave') return o.cmode === 'image' ? 'photo' : 'palette';
+  if (m === 'dither') return o.ddpal === false ? 'photo' : 'palette';
+  if (m === 'diffuse') return o.dfpal === false ? 'photo' : 'palette';
+  if (m === 'blobs') return o.blcol === 'palette' ? 'palette' : 'mono';
+  if (m === 'glyph' || m === 'martens') return 'palette';
+  return 'photo';
+}
 function restoreState(st) {
-  Object.assign(v, st.v); if (typeof st.seed === 'number') seed = st.seed;
+  Object.assign(v, st.v); v.colour = migrateColour(st.v || {}); if (typeof st.seed === 'number') seed = st.seed;
   if (Array.isArray(st.palette) && st.palette.length) { palette = st.palette.slice(); paletteSrc = (st.paletteSrc || st.palette).slice(); paletteAuto = !!st.paletteAuto; }
   resetPalMem(); if (st.palMem && typeof st.palMem === 'object') palMem = st.palMem;
   if (st.primed) ({ shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed } = { shapesPrimed, weavePrimed, ditherPrimed, glyphModePrimed, martensPrimed, ...st.primed });
@@ -1775,7 +1831,7 @@ out.addEventListener('pointerup', e => {
     if (picking) {
       const r = out.getBoundingClientRect(), x = (e.clientX - r.left) / r.width * src.width, y = (e.clientY - r.top) / r.height * src.height;
       const d = sctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
-      palette.push(rgb2hex([d[0], d[1], d[2]])); paletteSrc.push(palette[palette.length - 1]); paletteAuto = false; v.cmode = 'palette'; picking = false; toast(''); drawAll(); schedule();
+      palette.push(rgb2hex([d[0], d[1], d[2]])); paletteSrc.push(palette[palette.length - 1]); paletteAuto = false; picking = false; if (v.colour === 'photo') { v.colour = 'palette'; flash('Colour added · Colour: Palette'); } else toast(''); drawAll(); schedule();
     } else if (document.body.classList.contains('hideui')) showUI(); else { document.body.classList.add('hideui'); clearTimeout(idleT); }
   }
   pts.delete(e.pointerId); if (pts.size < 2) pinch0 = null; if (!pts.size && interactive) { interactive = false; schedule(); }
@@ -1997,7 +2053,7 @@ function vectorLayers(W, H) {
 }
 const n2 = x => +x.toFixed(2);
 function vectorFile(fmt, W, H) {
-  const layers = vectorLayers(W, H), ground = layers[0].G.ground;
+  const layers = withColour(() => vectorLayers(W, H)), ground = layers[0].G.ground;
   if (fmt === 'svg') {
     const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`];
     if (ground) parts.push(`<rect width="${W}" height="${H}" fill="${adjHex(ground)}"/>`);
@@ -2236,7 +2292,7 @@ function closeGalView(instant) {
 $('galBack').onclick = () => closeGalView();
 function applyPreset(p) {
   const { __seed, __palette, __paletteSrc, ...rest } = p.state;
-  Object.assign(v, rest);
+  Object.assign(v, rest); v.colour = migrateColour(rest);
   // Presets from before Grain went global kept noise per mode
   if (rest.scale === undefined) {
     const m = rest.mode, old = m === 'shapes' ? rest.cell : m === 'glyph' ? rest.gcell : m === 'martens' ? rest.mpitch : m === 'dither' ? rest.ddsize * 5 : m === 'weave' ? 850 / ((rest.cols + rest.rows) / 2) : undefined;

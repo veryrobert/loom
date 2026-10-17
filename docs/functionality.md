@@ -29,12 +29,13 @@ Each tab is a list of controls: sliders (scrub strip, double-tap item to reset),
 toggles, actions, colour, hold-to-compare. Toggles, actions and colour sit in the top-left corner group.
 - ☐ Pattern: None, Shapes, Pixel, Glyph, Dither, Martens, Glass, Blobs, Diffuse, each with its own settings
 - ☐ Adjust: canvas base (blank canvas only), brightness, contrast, saturation, hue, blur, blend + amount, adjust pattern only
-- ☐ Colour: depends on pattern. Invert, colour the photo, palette size, extract, random palette, pick from image; swatches (edit, add, remove)
+- 🔧 Colour: one setting for every pattern, Photo / Palette / Duo / Mono (replaces Colour from, Scheme, Ink and the three Use palette toggles). Then invert, apply to photo (only where the photo shows), palette size, extract, random palette, pick from image; swatches (edit, add, remove) and a lock that keeps colours for the next photo
+- 🔧 One palette shared by every pattern (no hidden per-pattern palettes); Glyph, Martens and Dither start on Mono on first visit
+- 🔧 Editing colours while on Photo switches to Palette visibly, with a toast; old saved looks are converted
 - ☐ Texture: grain, glow + size, dither finish (type, levels, dot size, random sizes, use palette)
 - ☐ Scale: scale, density zones (hidden for None and Diffuse)
 - ☐ Mask: treated area (full, fractions, patches), side, patch settings, move/scale/reset/shuffle mask
 - ☐ Controls that depend on others appear and disappear without losing the selected control
-- ☐ Patterns keep their own palettes (Glyph, Martens, Dither start black and white)
 - ☐ Controls fade after 12s idle; tapping the artwork toggles them
 
 ## Artwork gestures
