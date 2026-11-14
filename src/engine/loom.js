@@ -1163,7 +1163,9 @@ function layout() {
 const DEBUG = new URLSearchParams(location.search).has('debug');
 let dbgEl = null, dbgN = 0;
 function debugReadout(w, h, k, W, H) {
-  if (!dbgEl) { dbgEl = document.createElement('pre'); dbgEl.style.cssText = 'position:fixed; left:8px; top:calc(env(safe-area-inset-top,0px) + 8px); z-index:50; margin:0; padding:6px 8px; font:11px/1.35 ui-monospace,Menlo,monospace; color:#fff; background:rgba(0,0,0,.75); border-radius:4px; pointer-events:none; white-space:pre'; document.body.appendChild(dbgEl); }
+  if (!dbgEl) { dbgEl = document.createElement('pre'); dbgEl.style.cssText = 'position:fixed; left:8px; top:calc(env(safe-area-inset-top,0px) + 8px); z-index:50; margin:0; padding:6px 8px; font:11px/1.35 ui-monospace,Menlo,monospace; color:#fff; background:rgba(0,0,0,.75); border-radius:4px; white-space:pre; cursor:pointer'; document.body.appendChild(dbgEl);
+    // Tap the readout to save the preview canvas's own pixels, exactly as drawn, before the screen shows them
+    dbgEl.onclick = () => out.toBlob(b => { if (b) deliver(`loom-preview-${out.width}x${out.height}.png`, b).catch(() => {}); }, 'image/png'); }
   const n = ++dbgN;
   requestAnimationFrame(() => {
     if (n !== dbgN) return;
@@ -1175,7 +1177,9 @@ function debugReadout(w, h, k, W, H) {
       `canvas ${out.width}x${out.height}  (${(out.width / Math.max(1, out.clientWidth)).toFixed(2)}x)`,
       `drag ${interactive}  video ${!!(vid && !vid.paused)}`,
       `photo ${img ? srcW() + 'x' + srcH() : '-'}  mode ${v.mode}`,
-      `renders ${n}`,
+      `glow ${v.glow}/${v.gsize}  blur ${v.blur}  grain ${v.grain}`,
+      `dither ${v.dither}  blend ${v.blend}/${v.mix}  split ${v.split}`,
+      `renders ${n}  tap to save`,
     ].join('\n');
   });
 }
