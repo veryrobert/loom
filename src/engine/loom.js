@@ -1152,11 +1152,32 @@ function layout() {
   let k = Math.min(window.devicePixelRatio || 1, 3, Math.sqrt(3.5e6 / Math.max(1, w * h))) * (interactive ? 0.5 : 1) * (vid && !vid.paused ? 0.6 : 1);
   if (recording) k = recLong / Math.max(w, h);
   const W = Math.round(w * k), H = Math.round(h * k);
+  if (DEBUG) debugReadout(w, h, k, W, H);
   // A fresh image shows unprocessed until any setting changes — not only on opening a tab, since a
   // tab is usually already open when switching images
   if (rawPreview && rawKey() !== rawSnap) rawPreview = false;
   if ((comparing || rawPreview) && img) { out.width = W; out.height = H; drawSource(W, H); out.getContext('2d').drawImage(src, 0, 0); return; }
   render(W, H, out);
+}
+// Temporary diagnostic: open the app with ?debug to show the preview canvas resolution in the corner
+const DEBUG = new URLSearchParams(location.search).has('debug');
+let dbgEl = null, dbgN = 0;
+function debugReadout(w, h, k, W, H) {
+  if (!dbgEl) { dbgEl = document.createElement('pre'); dbgEl.style.cssText = 'position:fixed; left:8px; top:calc(env(safe-area-inset-top,0px) + 8px); z-index:50; margin:0; padding:6px 8px; font:11px/1.35 ui-monospace,Menlo,monospace; color:#fff; background:rgba(0,0,0,.75); border-radius:4px; pointer-events:none; white-space:pre'; document.body.appendChild(dbgEl); }
+  const n = ++dbgN;
+  requestAnimationFrame(() => {
+    if (n !== dbgN) return;
+    const vv = window.visualViewport;
+    dbgEl.textContent = [
+      `dpr ${window.devicePixelRatio}  zoom ${vv ? vv.scale.toFixed(2) : '-'}`,
+      `css ${Math.round(w)}x${Math.round(h)}  k ${k.toFixed(2)}`,
+      `asked ${W}x${H}`,
+      `canvas ${out.width}x${out.height}  (${(out.width / Math.max(1, out.clientWidth)).toFixed(2)}x)`,
+      `drag ${interactive}  video ${!!(vid && !vid.paused)}`,
+      `photo ${img ? srcW() + 'x' + srcH() : '-'}  mode ${v.mode}`,
+      `renders ${n}`,
+    ].join('\n');
+  });
 }
 let rawSnap = '';
 const rawKey = () => JSON.stringify([v, palette, seed]);
